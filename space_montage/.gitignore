@@ -1,0 +1,6 @@
+__pycache__/
+clips/
+board/
+frames/
+*.mp4
+*.wav
