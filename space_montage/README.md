@@ -50,8 +50,11 @@ python voice_tag.py --recording voice/reditor_voice.wav --song song_raw.wav \
 
 python engine.py board  --outdir board            # storyboard: 3 frames per shot
 python engine.py render --out space_1080p60.mp4   # full render, 4 processes
-python engine.py render --out space_2160p60.mp4 --width 3840 --crf 18
+python engine.py render --out space_2160p60.mp4 --width 3840 --crf 17 --jobs 2
 ```
+
+Each parallel chunk needs about 1 GB of RAM at 1080p and about 4 GB at 2160p, so lower `--jobs` on small
+machines. If a run is interrupted, the same command with `--resume` keeps the chunks that already finished.
 
 `SM_CLIPS` and `SM_SONG` override the clip folder and the audio file
 (`SM_SONG=song_no_voice.wav` gives the same picture without the spoken tag).

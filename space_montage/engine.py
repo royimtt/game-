@@ -931,15 +931,31 @@ def render_range(edit, W, H, fps, f_from, f_to, out, crf=16, preset="medium", gr
         edit = load_edit(edit)
     r = Renderer(edit, W, H, fps, grain)
     f_to = min(f_to, r.total)
-    enc = subprocess.Popen(x264_cmd(out, W, H, fps, crf, preset), stdin=subprocess.PIPE)
+    tmp = out + ".tmp.mp4"
+    enc = subprocess.Popen(x264_cmd(tmp, W, H, fps, crf, preset), stdin=subprocess.PIPE)
 
     def put(f, img):
-        enc.stdin.write(img.tobytes())
+        try:
+            enc.stdin.write(img.tobytes())
+        except BrokenPipeError:
+            raise RuntimeError(f"the encoder for frames {f_from}-{f_to} died at frame {f} "
+                               "(usually out of memory: run again with --resume and fewer --jobs)") from None
 
     r.frames(f_from, f_to, put)
     enc.stdin.close()
-    enc.wait()
+    if enc.wait() != 0:
+        raise RuntimeError(f"the encoder for frames {f_from}-{f_to} failed")
+    os.replace(tmp, out)          # a chunk only gets its final name once it is complete
     return out
+
+
+def count_frames(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                          "stream=nb_frames", "-of", "csv=p=0", path], capture_output=True, text=True).stdout
+    try:
+        return int(out.strip().split(",")[0])
+    except ValueError:
+        return -1
 
 
 def load_edit(path=None):
@@ -960,24 +976,37 @@ def cmd_render(a):
     validate(shots, fps)
     f_from = int(round(a.t0 * fps)) if a.t0 else 0
     f_to = int(round(a.t1 * fps)) if a.t1 else total
-    # split on shot boundaries into balanced groups
+    # split on shot boundaries into balanced chunks; --jobs of them render at a time
+    n_parts = a.parts or a.jobs
     bounds = sorted({f_from, f_to} | {s.f0 for s in shots if f_from < s.f0 < f_to})
-    target = (f_to - f_from) / float(a.jobs)
+    target = (f_to - f_from) / float(n_parts)
     cuts = [f_from]
     for b in bounds[1:-1]:
-        if b - cuts[-1] >= target * 0.9 and len(cuts) < a.jobs:
+        if b - cuts[-1] >= target * 0.9 and len(cuts) < n_parts:
             cuts.append(b)
     cuts.append(f_to)
     tmp = a.out + ".parts"
     os.makedirs(tmp, exist_ok=True)
     jobs = []
+    failed = []
     with cf.ProcessPoolExecutor(a.jobs) as ex:
         for i in range(len(cuts) - 1):
-            part = os.path.join(tmp, f"part{i:02d}.mp4")
+            part = os.path.join(tmp, f"part{i:02d}_{cuts[i]}-{cuts[i + 1]}.mp4")
+            if a.resume and os.path.exists(part) and count_frames(part) == cuts[i + 1] - cuts[i]:
+                print("keeping", os.path.basename(part))
+                jobs.append((part, None))
+                continue
             jobs.append((part, ex.submit(render_range, edit_path(a), W, H, fps, cuts[i], cuts[i + 1],
                                          part, a.crf, a.preset, a.grain)))
         for part, fut in jobs:
-            fut.result()
+            try:
+                if fut is not None:
+                    fut.result()
+            except Exception as e:      # keep the finished chunks so --resume can pick them up
+                failed.append(f"{os.path.basename(part)}: {e}")
+    if failed:
+        sys.exit("render incomplete:\n  " + "\n  ".join(failed) + f"\nfinished chunks are kept in {tmp}; "
+                 "run the same command with --resume (and fewer --jobs if memory ran out)")
     lst = os.path.join(tmp, "list.txt")
     with open(lst, "w") as fh:
         for part, _ in jobs:
@@ -1072,7 +1101,10 @@ def main():
     p.add_argument("--fps", type=int, default=60)
     p.add_argument("--crf", type=float, default=16)
     p.add_argument("--preset", default="medium")
-    p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--jobs", type=int, default=4, help="chunks rendered at the same time "
+                   "(each takes about 1 GB of RAM at 1080p and 4 GB at 2160p)")
+    p.add_argument("--parts", type=int, default=0, help="number of chunks (default: --jobs)")
+    p.add_argument("--resume", action="store_true", help="keep chunks a previous run already finished")
     p.add_argument("--grain", type=float, default=0.011)
     p.add_argument("--t0", type=float, default=0)
     p.add_argument("--t1", type=float, default=0)
