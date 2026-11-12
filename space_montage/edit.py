@@ -2,7 +2,8 @@
 
 Beats are dotted quarters: kick on even beats, snare on odd beats.
     0-8    intro: four long nebula flights (cut on every kick)
-    8-16   title: S-P-A-C-E, one letter per beat, then the word falls into a black hole
+    8-15   title: S-P-A-C-E, one letter per beat, then the word falls into a black hole
+    15-16  signature: the channel name on the last beat before the drop
     16-32  montage: a cut on every beat, eighth-note triplet bursts closing each phrase
     32-end outro: supernova, then the solar system on a shuffle rhythm, then home
 """
@@ -14,6 +15,7 @@ from engine import Shot  # noqa: E402
 
 F_TITLE = "/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf"
 F_SMALL = "/usr/share/fonts/opentype/inter/Inter-Medium.otf"
+F_SIGN = "/usr/share/fonts/opentype/inter/InterDisplay-ExtraBoldItalic.otf"
 
 SQ4096 = "4096:2304:0:896"      # 16:9 band out of 4096x4096 sources
 SQ3840 = "3840:2160:0:840"
@@ -71,9 +73,17 @@ SHOTS = [
     letter("t3_A", "eso__eso1529a.ultra_hd.mp4", 13.2, 10),
     letter("t4_C", "hub__heic1209g.hd_1080p25_screen.mp4", 7.4, 11),
     letter("t5_E", "eso__eso2610b.ultra_hd.mp4", 2.0, 12),
-    Shot("t6_blackhole", "eso__black-hole-material.ultra_hd.mp4", 0.6, 13, 16, step=1.0, ramp=2.0,
+    Shot("t6_blackhole", "eso__black-hole-material.ultra_hd.mp4", 0.6, 13, 15, step=1.0, ramp=2.0,
          flash=1.8, zp=0.2, exposure=0.62, bloom=0.4, streak=0.15, tout="none", accent=0.18,
-         keys=[(0.0, 1.04, 0.5, 0.5), (0.64, 1.13, 0.5, 0.5, "lin"), (1.0, 14.0, 0.84, 0.21, "in")]),
+         keys=[(0.0, 1.04, 0.5, 0.5), (0.50, 1.10, 0.5, 0.5, "lin"), (1.0, 14.0, 0.84, 0.21, "in")]),
+
+    # --------------------------------------------------------- signature ---
+    # the title has fallen into the black hole; on the next beat the channel name is
+    # struck inside its shadow, and the beat after that is the drop
+    Shot("s1_signature", "nasa__bh_upclose_4k.mp4", 2.0, 15, 16, step=1.0, ramp=5.0, ramp_tau=0.10,
+         exposure=0.72, tone=(2.8, 1.65, 0.92), gamma=1.1, flash=1.2, zp=0.30, zo=0.7, fo=2.2,
+         shake=0.004, bloom=0.5, streak=0.0, pulse=0.0,
+         keys=[(0.0, 1.03, 0.5, 0.455), (1.0, 1.10, 0.5, 0.455, "lin")]),
 
     # ----------------------------------------------------------- montage ---
     # bar 1 (beats 16-20): violent stars, ending on a triplet of the Sun
@@ -142,9 +152,15 @@ for a, b in zip(SHOTS, SHOTS[1:]):
         a.tout = "whip"
 
 TITLE = dict(word="SPACE", font=F_TITLE, size=0.105, tracking=0.62, y=0.5,
-             beats=[8, 9, 10, 11, 12], full=13, exit=15.0, end=15.92, exit_to=(0.5, 0.5),
-             alpha_pre=0.82)
+             beats=[8, 9, 10, 11, 12], full=13, exit=14.0, end=14.92, exit_to=(0.5, 0.5))
 
-CREDIT = dict(text="FOOTAGE   NASA  ·  ESA/HUBBLE  ·  STScI  ·  ESO (M. KORNMESSER, L. CALÇADA)", font=F_SMALL,
-              size=0.0105, tracking=0.26, y=0.928, t0=52.25, t1=54.0, level=0.5)
+SIGNATURE = dict(text="Reditor", font=F_SIGN, size=0.112, tracking=-0.012, y=0.5, beat=15, end=16,
+                 env_json=os.environ.get("SM_TAG_ENV", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                                    "voice", "song_tag.json")))
+
+CREDIT = dict(t0=52.25, t1=54.0, lines=[
+    dict(text="REDITOR", font=F_TITLE, size=0.0150, tracking=0.60, y=0.878, level=0.85),
+    dict(text="FOOTAGE   NASA  ·  ESA/HUBBLE  ·  STScI  ·  ESO (M. KORNMESSER, L. CALÇADA)", font=F_SMALL,
+         size=0.0100, tracking=0.26, y=0.932, level=0.45),
+])
 FADE_OUT = 1.0

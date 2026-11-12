@@ -165,7 +165,9 @@ SHOT_DEFAULTS = dict(
     shake=0.006,         # entry camera shake (fraction of width)
     pulse=0.0,           # eighth-note exposure pulses inside the shot
     accent=0.0,          # exposure / zoom bump on every whole beat inside the shot
-    exposure=1.0, sat=1.0, tint=(1.0, 1.0, 1.0), black=0.0, gamma=1.0,
+    exposure=1.0, sat=1.0, black=0.0, gamma=1.0,
+    tone=None,           # per-channel exponents on the footage only, e.g. (2.4, 1.5, 0.9):
+                         # highlights stay white-hot, everything dimmer falls off to blue
     keys=None,           # [(frac, zoom, cx, cy, ease)] overrides z0/z1/c0/c1
     bloom=0.55, rays=0.0, rays_at=None,
     streak=0.25,
@@ -537,8 +539,7 @@ def finish(img, look, shot, grain_amp=0.011):
     g = cv2.pow(img, (1.0 / GAMMA) * shot.gamma)
     sat = 1.10 * shot.sat
     lw = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
-    tint = np.array(shot.tint, dtype=np.float32)
-    m = (np.eye(3, dtype=np.float32) * sat + (1 - sat) * lw[None, :]) * tint[:, None]
+    m = np.eye(3, dtype=np.float32) * sat + (1 - sat) * lw[None, :]
     g = cv2.transform(g, m)
     # gentle S-curve + black point
     np.clip(g, 0.0, 1.0, out=g)
@@ -664,6 +665,143 @@ class Title:
         return cv2.merge(out)
 
 
+# -------------------------------------------------------------- signature ---
+class Signature:
+    """The channel name, struck on one beat and blown away by the next.
+
+    A horizontal light streak snaps across the dark frame and unzips the word from
+    its centre; a thin shock ring runs outwards and refracts the stars behind it;
+    the letters breathe with the spoken tag, charge up and rush the camera into
+    the drop.  Everything is drawn in linear light on top of the picture.
+    """
+
+    def __init__(self, W, H, spec, fps):
+        from PIL import Image, ImageDraw, ImageFont
+        self.W, self.H, self.spec, self.fps = W, H, spec, fps
+        size = int(spec.get("size", 0.092) * W)
+        ss = 2
+        font = ImageFont.truetype(spec["font"], size * ss)
+        text = spec["text"]
+        track = spec.get("tracking", 0.0) * size * ss
+        adv = [font.getlength(c) for c in text]
+        l, t, r, b = font.getbbox(text)
+        pad = int(size * ss * 0.5)
+        tw = int(sum(adv) + track * (len(text) - 1)) + 2 * pad
+        th = int(b - t) + 2 * pad
+        im = Image.new("L", (tw, th), 0)
+        d = ImageDraw.Draw(im)
+        x = float(pad)
+        for c, a in zip(text, adv):
+            d.text((x, pad - t), c, font=font, fill=255)
+            x += a + track
+        m = np.asarray(im, dtype=np.float32) / 255.0
+        self.mask = cv2.resize(m, (tw // ss, th // ss), interpolation=cv2.INTER_AREA)
+        self.mh, self.mw = self.mask.shape
+        self.text_w = (sum(adv) + track * (len(text) - 1)) / ss
+        self.text_h = (b - t) / ss
+        self.cx, self.cy = W * spec.get("x", 0.5), H * spec.get("y", 0.5)
+        yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+        self.dx, self.dy = xx - self.cx, yy - self.cy
+        self.r = np.sqrt(self.dx * self.dx + self.dy * self.dy)
+        self.xx, self.yy = xx, yy
+        self.env = None
+        p = spec.get("env_json")
+        if p and os.path.exists(p):
+            import json
+            j = json.load(open(p))
+            e = np.asarray(j["env"], np.float32)
+            self.env = np.interp(np.arange(int(DURATION * fps)) / fps, np.arange(len(e)) / j["fps"], e)
+        self.rng = np.random.default_rng(99)
+
+    def times(self):
+        fps = self.fps
+
+        def tq(k):
+            return math.floor(bt(k) * fps + 0.35) / fps
+        return tq(self.spec["beat"]), tq(self.spec["end"])
+
+    def _text(self, scale, ox=0.0, oy=0.0):
+        m = np.array([[scale, 0, self.cx + ox - scale * self.mw / 2.0],
+                      [0, scale, self.cy + oy - scale * self.mh / 2.0]])
+        return cv2.warpAffine(self.mask, m, (self.W, self.H), flags=cv2.INTER_LINEAR)
+
+    def composite(self, img, t):
+        t0, t1 = self.times()
+        t = t + 0.25 / self.fps
+        if t < t0 or t >= t1:
+            return img
+        W, H = self.W, self.H
+        s = W / 1920.0
+        tau, u, T = t - t0, t1 - t, t1 - t0
+        f = int(round(t * self.fps))
+        voice = float(self.env[f]) if self.env is not None and f < len(self.env) else 0.0
+        surge = min(max((0.15 - u) / 0.15, 0.0), 1.0) ** 2          # charge-up into the drop
+        eighth = math.exp(-((t - BEAT0) % (BEAT / 3.0)) / 0.07)
+
+        # --- shock ring: refract what is behind it, then add its light --------------
+        rr = W * (0.02 + 0.80 * (1.0 - math.exp(-tau / 0.24)))
+        rw = W * (0.006 + 0.030 * tau)
+        ring_gain = math.exp(-tau / 0.21)
+        if ring_gain > 0.02:
+            prof = np.exp(-((self.r - rr) / (1.8 * rw)) ** 2)
+            push = (0.016 * W * ring_gain) * prof / np.maximum(self.r, 1.0)
+            img = cv2.remap(img, self.xx - self.dx * push, self.yy - self.dy * push, cv2.INTER_LINEAR,
+                            borderMode=cv2.BORDER_REFLECT_101)
+        # --- the word ---------------------------------------------------------------
+        scale = (1.0 + 0.30 * math.exp(-tau / 0.05)) * (1.0 + 0.045 * tau / T) * (1.0 + 0.55 * surge ** 1.5)
+        jx, jy = (self.rng.uniform(-1, 1, 2) * (0.004 * W * surge + 0.006 * W * math.exp(-tau / 0.05)))
+        ca = 0.016 * math.exp(-tau / 0.10) + 0.014 * surge + 0.0015
+        n_blur = 1 + int(round(6 * surge))
+        chans = []
+        for k in (1.0 + ca, 1.0, 1.0 - ca):
+            acc = None
+            for i in range(n_blur):
+                zz = scale * k * (1.0 + 0.10 * surge * i / max(n_blur - 1, 1))
+                a = self._text(zz, jx, jy)
+                acc = a if acc is None else acc + a
+            chans.append(acc / n_blur)
+        # unzip from the centre along the streak
+        reach = (self.text_w * 0.5 * scale + 0.03 * W) * min(tau / 0.075, 1.0) ** 0.6 + 2.0
+        wipe = np.clip((reach - np.abs(self.dx)) / (0.012 * W) + 0.5, 0.0, 1.0)
+        # brighter at the cap line than at the baseline: a faint metallic falloff
+        grad = np.clip(0.90 - 0.26 * self.dy / max(self.text_h * scale, 1.0), 0.6, 1.25)
+        level = 0.70 + 1.5 * math.exp(-tau / 0.15) + 0.10 * eighth + 0.55 * voice + 1.6 * surge
+        glow = 0.30 + 1.5 * math.exp(-tau / 0.20) + 0.25 * eighth + 0.9 * voice + 1.6 * surge
+        sweep = 0.0
+        q = (tau - 0.30) / 0.42
+        if 0.0 <= q <= 1.0:
+            x0 = self.cx - self.text_w * 0.62 + self.text_w * 1.24 * q
+            sweep = np.exp(-(((self.xx + 0.4 * self.dy) - x0) / (0.030 * W)) ** 2) * 1.5
+        col = self.spec.get("color", (0.93, 0.96, 1.0))
+        alpha = chans[1] * wipe
+        lights = [c * wipe * (level * grad + sweep) for c in chans]
+        halo = cv2.GaussianBlur(lights[1], (0, 0), 26 * s) * (0.55 * glow) \
+            + cv2.GaussianBlur(lights[1], (0, 0), 6 * s) * (0.30 * glow)
+        # --- light: a soft flare bursts through the word, a fine line stays under it --
+        burst = 2.4 * math.exp(-tau / 0.09)
+        blen = W * (0.08 + 0.50 * (1.0 - math.exp(-tau / 0.035)))
+        flare = np.exp(-(self.dy / (0.010 * W)) ** 2) * (1.0 / (1.0 + (self.dx / blen) ** 2)) * (0.9 * burst) \
+            + np.exp(-(self.r / (0.022 * W)) ** 2) * (2.2 * math.exp(-tau / 0.06))
+        line_y = self.dy - (0.5 + 0.30) * self.text_h * scale
+        reach_l = (self.text_w * 0.62 * scale) * min(tau / 0.09, 1.0) ** 0.6 + 2.0
+        amp = 0.55 + 1.6 * math.exp(-tau / 0.12) + 0.12 * eighth + 0.45 * voice + 1.5 * surge
+        line = np.exp(-(line_y / (0.0014 * W)) ** 2) * np.exp(-(self.dx / reach_l) ** 4) * amp \
+            + np.exp(-(line_y / (0.008 * W)) ** 2) * np.exp(-(self.dx / (0.8 * reach_l)) ** 2) * (0.16 * amp)
+        streak = flare + line
+        ring = 0.0
+        if ring_gain > 0.02:
+            ring = 0.75 * ring_gain
+        keep = 1.0 - alpha
+        out = []
+        for i, (c, light, k) in enumerate(zip(cv2.split(img), lights, col)):
+            add = light * k + halo * (0.80, 0.90, 1.0)[i] + streak * (0.62, 0.80, 1.0)[i]
+            if ring_gain > 0.02:
+                off = (0.004, 0.0, -0.004)[i] * W          # red runs ahead, blue trails
+                add = add + ring * np.exp(-((self.r - rr - off) / rw) ** 2) * (0.75, 0.88, 1.0)[i]
+            out.append(c * keep + add)
+        return cv2.merge(out)
+
+
 # ----------------------------------------------------------------- render ---
 class Renderer:
     def __init__(self, edit, W, H, fps, grain=0.011):
@@ -675,6 +813,8 @@ class Renderer:
         spec = dict(edit.TITLE)
         spec["fps"] = fps
         self.title = Title(W, H, spec)
+        sig = getattr(edit, "SIGNATURE", None)
+        self.signature = Signature(W, H, sig, fps) if sig else None
         self.credit = getattr(edit, "CREDIT", None)
         self.fade_out = getattr(edit, "FADE_OUT", 1.1)
         self._credit_layer = None
@@ -691,22 +831,25 @@ class Renderer:
         return w, h
 
     def credit_layer(self):
+        """End card: one or more centred lines of spaced small caps, drawn once."""
         if self._credit_layer is None and self.credit:
             from PIL import Image, ImageDraw, ImageFont
             W, H = self.W, self.H
-            im = Image.new("L", (W * 2, H * 2), 0)
-            d = ImageDraw.Draw(im)
-            f = ImageFont.truetype(self.credit["font"], int(self.credit.get("size", 0.0125) * W * 2))
-            txt = self.credit["text"]
-            sp = self.credit.get("tracking", 0.22) * f.size
-            wtot = sum(f.getlength(c) for c in txt) + sp * (len(txt) - 1)
-            x = (W * 2 - wtot) / 2
-            y = H * 2 * self.credit.get("y", 0.93)
-            for c in txt:
-                d.text((x, y), c, font=f, fill=255)
-                x += f.getlength(c) + sp
-            a = cv2.resize(np.asarray(im, np.float32) / 255.0, (W, H), interpolation=cv2.INTER_AREA)
-            self._credit_layer = a
+            layer = np.zeros((H, W), np.float32)
+            for ln in self.credit["lines"]:
+                im = Image.new("L", (W * 2, H * 2), 0)
+                d = ImageDraw.Draw(im)
+                f = ImageFont.truetype(ln["font"], int(ln["size"] * W * 2))
+                txt = ln["text"]
+                sp = ln.get("tracking", 0.22) * f.size
+                wtot = sum(f.getlength(c) for c in txt) + sp * (len(txt) - 1)
+                x = (W * 2 - wtot) / 2
+                for c in txt:
+                    d.text((x, H * 2 * ln["y"]), c, font=f, fill=255)
+                    x += f.getlength(c) + sp
+                a = cv2.resize(np.asarray(im, np.float32) / 255.0, (W, H), interpolation=cv2.INTER_AREA)
+                layer += a * ln.get("level", 0.5)
+            self._credit_layer = layer
         return self._credit_layer
 
     def frames(self, f_from, f_to, on_frame):
@@ -741,12 +884,16 @@ class Renderer:
         gain, boost = exposure_env(shot, j, fps)
         if gain != 1.0:
             img *= gain
+        if shot.tone:
+            img = cv2.merge([c if p == 1.0 else cv2.pow(c, p) for c, p in zip(cv2.split(img), shot.tone)])
         img = add_bloom(img, shot.bloom * (1.0 + boost), shot.streak, shot.rays, shot.rays_at, state)
         img = self.title.composite(img, t)
+        if self.signature is not None:
+            img = self.signature.composite(img, t)
         if self.credit:
             c0, c1 = self.credit["t0"], self.credit["t1"]
             if c0 <= t <= c1:
-                a = self.credit_layer() * (self.credit.get("level", 0.5) * ease_io(min((t - c0) / 0.6, 1.0)))
+                a = self.credit_layer() * ease_io(min((t - c0) / 0.6, 1.0))
                 img += cv2.merge([a * 0.9, a * 0.95, a])
         out = finish(img, self.look, shot, self.grain)
         # fade to black at the very end (after the grade, so the grain fades too)

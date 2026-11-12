@@ -4,3 +4,7 @@ board/
 frames/
 *.mp4
 *.wav
+!voice/reditor_voice.wav
+!voice/song_tag.stem.wav
+*.onnx
+*.onnx.json
