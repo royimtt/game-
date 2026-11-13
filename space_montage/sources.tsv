@@ -17,11 +17,9 @@ nasa__iss_2840.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_
 nasa__moontour.mp4	https://svs.gsfc.nasa.gov/vis/a000000/a004600/a004619/moontour_notitle_2160p30.mp4
 nasa__sun_ballet.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014100/a014126/4038_Solar_Ballet_CU_mk_II.mp4
 nasa__supernova_4k.mp4	https://svs.gsfc.nasa.gov/vis/a020000/a020400/a020413/SN_HQ_Full_H264_V001.mp4
-webb__weic2603c.hd_1080p25_screen.mp4	https://cdn.esawebb.org/archives/videos/hd_1080p25_screen/weic2603c.mp4
 eso__eso0907a.jpg	https://cdn.eso.org/images/large/eso0907a.jpg
 eso__eso1520a.jpg	https://cdn.eso.org/images/large/eso1520a.jpg
 eso__eso1907a.jpg	https://cdn.eso.org/images/large/eso1907a.jpg
-eso__eso9845d.jpg	https://cdn.eso.org/images/large/eso9845d.jpg
 hub__heic0503a.jpg	https://cdn.esahubble.org/archives/images/large/heic0503a.jpg
 hub__heic0506a.jpg	https://cdn.esahubble.org/archives/images/large/heic0506a.jpg
 hub__heic0715a.jpg	https://cdn.esahubble.org/archives/images/large/heic0715a.jpg
@@ -43,8 +41,10 @@ pl__moon.jpg	https://images-assets.nasa.gov/image/PIA00405/PIA00405~orig.jpg	reg
 pl__neptune.jpg	https://images-assets.nasa.gov/image/PIA01492/PIA01492~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
 pl__pluto.jpg	https://images-assets.nasa.gov/image/PIA19952/PIA19952~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
 pl__saturn.jpg	https://images-assets.nasa.gov/image/PIA06193/PIA06193~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
-pl__uranus.jpg	https://cdn.esawebb.org/archives/images/large/weic2602a.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__uranus.jpg	https://cdn.esawebb.org/archives/images/large/weic2310a.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
 webb__carinanebula3.jpg	https://cdn.esawebb.org/archives/images/large/carinanebula3.jpg
+webb__potm2208a.jpg	https://cdn.esawebb.org/archives/images/large/potm2208a.jpg
+webb__potm2409a.jpg	https://cdn.esawebb.org/archives/images/large/potm2409a.jpg
 webb__potm2411a.jpg	https://cdn.esawebb.org/archives/images/large/potm2411a.jpg
 webb__potm2412a.jpg	https://cdn.esawebb.org/archives/images/large/potm2412a.jpg
 webb__potm2502a.jpg	https://cdn.esawebb.org/archives/images/large/potm2502a.jpg

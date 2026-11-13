@@ -4,7 +4,7 @@ Every picture in the film is real: footage shot from the International Space Sta
 
 **Short credit for a post description**
 
-> Footage: NASA (JSC, JPL, Goddard SVS, SDO) · ESA/Hubble · ESA/Webb, CSA, STScI · ESO (M. Kornmesser, L. Calçada) · EHT Collaboration. ESO and ESA material used under CC BY 4.0.
+> Footage: NASA (JSC, JPL, Goddard SVS, SDO) · ESA/Hubble · ESA/Webb, CSA, STScI · ESO/M. Kornmesser · EHT Collaboration. ESO and ESA material used under CC BY 4.0.
 
 - NASA material is in the public domain and is used following NASA's media usage guidelines; its use does not imply endorsement.
 - ESO, ESA/Hubble and ESA/Webb material is licensed CC BY 4.0: it may be edited and re-used as long as the credit stays visible. The film ends on a credit line; keep the short credit above in the post description as well.
@@ -19,7 +19,7 @@ Every picture in the film is real: footage shot from the International Space Sta
 | 5 | 04.73 s | `a5_moon` | [Tour of the Moon 4K Redux](https://svs.gsfc.nasa.gov/4619) | NASA's Scientific Visualization Studio (Ernie Wright) | Public domain |
 | 6 | 05.63 s | `a6_earthrise` | [Earthrise (Apollo 8, AS08-14-2383)](https://images.nasa.gov/details/as08-14-2383) | NASA/Bill Anders | Public domain |
 | 7 | 06.88 s | `a7_sun` | [Solar prominence, 31 Dec 2012 (SDO Video Toolkit)](https://svs.gsfc.nasa.gov/14126) | NASA's Goddard Space Flight Center (Scott Wiessinger, Tom Bridgman) / SDO | Public domain |
-| 8 | 07.95 s | `a8_warp` | [JADES: GOODS South fly-through visualization](https://esawebb.org/videos/weic2603c/) | Visualization: C. Nieves (STScI), F. Summers (STScI), A. Pagan (STScI), G. Bacon (STScI); Science: JADES Team, K. Hainline (University of Arizona) | CC BY 4.0 |
+| 8 | 07.95 s | `a8_warp` | [The exotic stellar population of Westerlund 1](https://esawebb.org/images/potm2409a/) | ESA/Webb, NASA & CSA, M. Zamani (ESA/Webb), M. G. Guarcello (INAF-OAPA) and the EWOCS team | CC BY 4.0 |
 | 9 | 09.02 s | `t1_S` | [Animation of a sub-Earth-mass planet orbiting Barnard’s star](https://www.eso.org/public/videos/eso2414b/) | ESO/M. Kornmesser | CC BY 4.0 |
 | 10 | 10.10 s | `t2_P` | [Artist’s impression of the ultracool dwarf star TRAPPIST-1 from close to one of its planets](https://www.eso.org/public/videos/eso1615c/) | ESO/M. Kornmesser | CC BY 4.0 |
 | 11 | 11.17 s | `t3_A` | [Artist’s impression of a Jupiter twin orbiting HIP 11915](https://www.eso.org/public/videos/eso1529a/) | ESO/M. Kornmesser | CC BY 4.0 |
@@ -39,7 +39,7 @@ Every picture in the film is real: footage shot from the International Space Sta
 | 25 | 26.17 s | `m10_whirlpool` | [Out of this whirl: The Whirlpool Galaxy (M51) and companion galaxy](https://esahubble.org/images/heic0506a/) | NASA, ESA, S. Beckwith (STScI), and The Hubble Heritage Team (STScI/AURA) | CC BY 4.0 |
 | 26 | 26.60 s | `m11_spiral` | [Close look at a local galaxy](https://esawebb.org/images/potm2412a/) | ESA/Webb, NASA & CSA, A. Leroy | CC BY 4.0 |
 | 27 | 26.87 s | `m12_spiral` | [Webb visits a star-forming spiral](https://esawebb.org/images/potm2502a/) | ESA/Webb, NASA & CSA, A. Leroy | CC BY 4.0 |
-| 28 | 27.23 s | `m13_ngc1232` | [Spiral galaxy NGC 1232](https://www.eso.org/public/images/eso9845d/) | ESO | CC BY 4.0 |
+| 28 | 27.23 s | `m13_phantom` | [Webb Inspects the Heart of the Phantom Galaxy](https://esawebb.org/images/potm2208a/) | ESA/Webb, NASA & CSA, J. Lee and the PHANGS-JWST Team. Acknowledgement: J. Schmidt | CC BY 4.0 |
 | 29 | 28.32 s | `m14_sombrero` | [Hubble mosaic of the majestic Sombrero Galaxy](https://esahubble.org/images/opo0328a/) | NASA/ESA and The Hubble Heritage Team (STScI/AURA) | CC BY 4.0 |
 | 30 | 28.70 s | `m15_ngc1300` | [A poster-size image of the beautiful barred spiral galaxy NGC 1300](https://esahubble.org/images/opo0501a/) | NASA, ESA, and The Hubble Heritage Team (STScI/AURA) | CC BY 4.0 |
 | 31 | 29.27 s | `m16_antennae` | [Antennae Galaxies reloaded](https://esahubble.org/images/potw1345a/) | ESA/Hubble & NASA | CC BY 4.0 |
@@ -67,7 +67,7 @@ Every picture in the film is real: footage shot from the International Space Sta
 | 53 | 41.17 s | `h4_disc` | [Artist's impression of a black hole and the material surrounding it](https://www.eso.org/public/videos/black-hole-material/) | ESO/M. Kornmesser | CC BY 4.0 |
 | 54 | 43.32 s | `e1_pluto` | [The Rich Color Variations of Pluto](https://images.nasa.gov/details/PIA19952) | NASA/Johns Hopkins University Applied Physics Laboratory/Southwest Research Institute | Public domain |
 | 55 | 44.07 s | `e2_neptune` | [Neptune full disk (Voyager 2)](https://images.nasa.gov/details/PIA01492) | NASA/JPL | Public domain |
-| 56 | 44.38 s | `e3_uranus` | [Uranus (January 2025)](https://esawebb.org/images/weic2602a/) | ESA/Webb, NASA, CSA, STScI, P. Tiranti, H. Melin, M. Zamani (ESA/Webb) | CC BY 4.0 |
+| 56 | 44.38 s | `e3_uranus` | [Zoomed-in image of Uranus](https://esawebb.org/images/weic2310a/) | NASA, ESA, CSA, STScI, J. DePasquale (STScI) | CC BY 4.0 |
 | 57 | 44.93 s | `e4_saturn` | [The greatest Saturn portrait ...yet (Cassini)](https://images.nasa.gov/details/PIA06193) | NASA/JPL/Space Science Institute | Public domain |
 | 58 | 45.45 s | `e5_jupiter` | [Jupiter’s Colourful Palette](https://esahubble.org/images/heic1914a/) | NASA, ESA, A. Simon (Goddard Space Flight Center), and M.H. Wong (University of California, Berkeley) | CC BY 4.0 |
 | 59 | 45.95 s | `e6_jupiter_ir` | [Jupiter Showcases Auroras, Hazes (NIRCam Closeup)](https://esawebb.org/images/jupiter-auroras1/) | NASA, ESA, Jupiter ERS Team; image processing by Judy Schmidt | CC BY 4.0 |

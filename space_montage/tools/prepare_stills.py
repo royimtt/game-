@@ -18,11 +18,11 @@ import numpy as np
 CW, CH = 3840, 2160
 R = 0.31 * CH
 
-# name: (source file, mask everything outside the limb?, crop (x0, y0, x1, y1) or None, globe (cx, cy, r) or None)
+# name: (source file, mask everything outside the limb?, crop (x0, y0, x1, y1) or None, globe (cx, cy, r) or None[, pre-blur])
 PLANETS = {
     "pluto": ("pl__pluto.jpg", True, None, None),
     "neptune": ("pl__neptune.jpg", True, None, None),
-    "uranus": ("pl__uranus.jpg", False, None, (988, 961, 525)),             # the globe inside its rings
+    "uranus": ("pl__uranus.jpg", False, None, (651.0, 629.4, 231.7), 1.0),  # the globe inside its rings (small JPEG: deblock)
     "saturn": ("pl__saturn.jpg", False, None, (4605.1, 2238.7, 1371.3)),
     "jupiter": ("pl__jupiter.jpg", True, None, None),
     "jupiterw": ("pl__jupiterw.jpg", True, None, None),
@@ -40,8 +40,10 @@ def find_disc(img, thr=18):
     return x, y, r
 
 
-def planet(src, dst, mask, crop, globe):
+def planet(src, dst, mask, crop, globe, soften=0.0):
     img = cv2.imread(src, cv2.IMREAD_COLOR)
+    if soften:
+        img = cv2.GaussianBlur(img, (0, 0), soften)
     if crop:
         img = img[crop[1]:crop[3], crop[0]:crop[2]]
     h, w = img.shape[:2]
@@ -88,8 +90,8 @@ def main():
     src, dst = sys.argv[1], sys.argv[2]
     os.makedirs(dst, exist_ok=True)
     special = {v[0] for v in PLANETS.values()} | {"pad__sgra.jpg"}
-    for name, (fn, mask, crop, globe) in PLANETS.items():
-        planet(os.path.join(src, fn), os.path.join(dst, fn), mask, crop, globe)
+    for name, (fn, mask, crop, globe, *rest) in PLANETS.items():
+        planet(os.path.join(src, fn), os.path.join(dst, fn), mask, crop, globe, *rest)
         print("registered", fn)
     pad_sgra(os.path.join(src, "pad__sgra.jpg"), os.path.join(dst, "pad__sgra.jpg"))
     print("padded pad__sgra.jpg")

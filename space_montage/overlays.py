@@ -297,10 +297,11 @@ class Signature:
             ln = np.clip((half - np.abs(self.xx - cx)) / (0.03 * W), 0.0, 1.0) * \
                 np.exp(-((self.yy - self.line_y) / (0.0011 * W)) ** 2)
             base = np.maximum(base, ln.astype(np.float32) * 0.7)
-        chans = [self.lensed(base, te * k, scale) for k in (1.06, 1.0, 0.94)]     # colours bend by different amounts
+        chans = [self.lensed(base, te * k, scale) for k in (1.025, 1.0, 0.975)]   # colours bend by different amounts
         alpha = chans[1]
-        level = self.level * (0.86 + 0.85 * math.exp(-tau / 0.12) + 0.45 * voice + 2.0 * out_k)
-        glow = 0.30 + 1.0 * math.exp(-tau / 0.2) + 0.9 * voice + 1.6 * out_k
+        arrive = 1.0 - math.exp(-tau / 0.10)                      # the stretched image is dimmer, as a lens would make it
+        level = self.level * (0.50 + 0.42 * arrive + 0.40 * voice * arrive + 2.0 * out_k)
+        glow = (0.15 + 0.30 * arrive) + 0.8 * voice * arrive + 1.6 * out_k
         fade = clamp((tau + 1.0 / fps) / 0.04)
         mods = ctx["mods"]
         a = attach(alpha * fade, mods, W, H)
@@ -314,10 +315,7 @@ class Signature:
         k = 1.0 - np.maximum(np.minimum(a, 1.0), 0.5 * sh)
         g = lights[1]
         halo = cv2.GaussianBlur(g, (0, 0), 24 * s) * (0.10 + 0.22 * glow) + cv2.GaussianBlur(g, (0, 0), 5 * s) * (0.2 * glow)
-        if tau < 0.3:                                             # an anamorphic streak through the word on the hit
-            st = cv2.blur(cv2.resize(g, (W // 4, H // 4), interpolation=cv2.INTER_AREA), (int(W * 0.07) | 1, 1))
-            halo += cv2.resize(st, (W, H), interpolation=cv2.INTER_LINEAR) * (0.5 * math.exp(-tau / 0.08))
-        ctx["glow"] = ctx.get("glow", 0.0) + 0.3 * math.exp(-tau / 0.15) + 0.6 * out_k
+        ctx["glow"] = ctx.get("glow", 0.0) + 0.6 * out_k
         ch = cv2.split(img)
         return cv2.merge([c * k + (l + halo) * col for c, l, col in zip(ch, lights, self.color)])
 

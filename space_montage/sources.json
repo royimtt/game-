@@ -44,12 +44,12 @@
   "licence": "Public domain",
   "download": "https://svs.gsfc.nasa.gov/vis/a010000/a014100/a014126/4038_Solar_Ballet_CU_mk_II.mp4"
  },
- "webb__weic2603c.hd_1080p25_screen.mp4": {
-  "title": "JADES: GOODS South fly-through visualization",
-  "credit": "Visualization: C. Nieves (STScI), F. Summers (STScI), A. Pagan (STScI), G. Bacon (STScI); Science: JADES Team, K. Hainline (University of Arizona)",
-  "page": "https://esawebb.org/videos/weic2603c/",
+ "webb__potm2409a.jpg": {
+  "title": "The exotic stellar population of Westerlund 1",
+  "credit": "ESA/Webb, NASA & CSA, M. Zamani (ESA/Webb), M. G. Guarcello (INAF-OAPA) and the EWOCS team",
+  "page": "https://esawebb.org/images/potm2409a/",
   "licence": "CC BY 4.0",
-  "download": "https://cdn.esawebb.org/archives/videos/hd_1080p25_screen/weic2603c.mp4"
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2409a.jpg"
  },
  "eso__eso2414b.ultra_hd.mp4": {
   "title": "Animation of a sub-Earth-mass planet orbiting Barnard’s star",
@@ -184,12 +184,12 @@
   "licence": "CC BY 4.0",
   "download": "https://cdn.esawebb.org/archives/images/large/potm2502a.jpg"
  },
- "eso__eso9845d.jpg": {
-  "title": "Spiral galaxy NGC 1232",
-  "credit": "ESO",
-  "page": "https://www.eso.org/public/images/eso9845d/",
+ "webb__potm2208a.jpg": {
+  "title": "Webb Inspects the Heart of the Phantom Galaxy",
+  "credit": "ESA/Webb, NASA & CSA, J. Lee and the PHANGS-JWST Team. Acknowledgement: J. Schmidt",
+  "page": "https://esawebb.org/images/potm2208a/",
   "licence": "CC BY 4.0",
-  "download": "https://cdn.eso.org/images/large/eso9845d.jpg"
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2208a.jpg"
  },
  "hub__opo0328a.jpg": {
   "title": "Hubble mosaic of the majestic Sombrero Galaxy",
@@ -384,11 +384,11 @@
   "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
  },
  "pl__uranus.jpg": {
-  "title": "Uranus (January 2025)",
-  "credit": "ESA/Webb, NASA, CSA, STScI, P. Tiranti, H. Melin, M. Zamani (ESA/Webb)",
-  "page": "https://esawebb.org/images/weic2602a/",
+  "title": "Zoomed-in image of Uranus",
+  "credit": "NASA, ESA, CSA, STScI, J. DePasquale (STScI)",
+  "page": "https://esawebb.org/images/weic2310a/",
   "licence": "CC BY 4.0",
-  "download": "https://cdn.esawebb.org/archives/images/large/weic2602a.jpg",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2310a.jpg",
   "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
  },
  "pl__saturn.jpg": {

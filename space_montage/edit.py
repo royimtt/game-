@@ -89,8 +89,9 @@ CLIPS = [
     Clip("a7_sun", "nasa__sun_ballet.mp4", 6, 7, t_in=3.4, speed=[(0.0, 9.0), (0.3, 4.0), (1.0, 3.0)], z=(1.0, 1.08),
          c=(0.45, 0.5), bloom=0.7,
          tin=Punch(punch=0.22, flash=1.3)),
-    Clip("a8_warp", "webb__weic2603c.hd_1080p25_screen.mp4", 7, 8, t_in=3.0, speed=[(0.0, 2.0), (0.5, 3.0), (1.0, 16.0)],
-         z=(1.0, 1.3), exposure=2.0, bloom=0.8, ease="in", tin=Zoom("in", at=(0.42, 0.5))),
+    # leaving: a real field of stars (Webb), the camera accelerating into it until the stars streak
+    Clip("a8_warp", "webb__potm2409a.jpg", 7, 8, keys=[(0.0, 1.15, 0.5, 0.5, 0.0), (1.0, 4.2, 0.5, 0.5, 14.0, "in")],
+         exposure=1.25, bloom=0.8, tin=Zoom("in", at=(0.42, 0.5))),
 
     # ---------------------------------------------------------------- title ---
     Clip("t1_S", "eso__eso2414b.ultra_hd.mp4", 8, 9, t_in=1.0, speed=2.4, z=(1.60, 1.70), c=(0.69, 0.435), occ=OCC["t1_S"],
@@ -130,7 +131,7 @@ CLIPS = [
     Clip("m10_whirlpool", "hub__heic0506a.jpg", 24, 24.40, z=(1.45, 1.52), c=(0.39, 0.484), rot=(0.0, 1.5), tin=Zoom("in", post=0.24)),
     Clip("m11_spiral", "webb__potm2412a.jpg", 24.40, 24.65, z=(1.05, 1.08), c=(0.507, 0.53), tin=Cut(**FLASH)),
     Clip("m12_spiral", "webb__potm2502a.jpg", 24.65, 25, z=(1.05, 1.09), c=(0.529, 0.432), tin=Cut(**FLASH)),
-    Clip("m13_ngc1232", "eso__eso9845d.jpg", 25, 26, z=(1.30, 1.46), c=(0.625, 0.519), rot=(0.0, 6.0), tin=Spin(50)),
+    Clip("m13_phantom", "webb__potm2208a.jpg", 25, 26, z=(1.10, 1.22), c=(0.459, 0.45), rot=(0.0, 6.0), tin=Spin(50)),
     Clip("m14_sombrero", "hub__opo0328a.jpg", 26, 26.36, z=(1.10, 1.15), c=(0.496, 0.492), tin=Zoom("out", post=0.24)),
     Clip("m15_ngc1300", "hub__opo0501a.jpg", 26.36, 26.89, z=(1.0, 1.06), c=(0.488, 0.468), tin=Cut(**FLASH)),
     Clip("m16_antennae", "hub__potw1345a.jpg", 26.89, 27.15, z=(1.0, 1.04), c=(0.55, 0.40), tin=Cut(**FLASH)),
@@ -148,11 +149,14 @@ CLIPS = [
     *STROBE,
 
     # ------------------------------------------------------- supernova (32-34) ---
-    Clip("x1_supernova", "nasa__supernova_4k.mp4", 32, 34, t_in=5.9, speed=[(0.0, 5.0), (0.5, 7.0), (1.0, 4.0)], z=(1.0, 1.12),
-         bloom=0.7, tin=Cut(flash=1.6, punch=0.15, post=0.3)),
+    # a star dies on the downbeat: twenty-three seconds of the simulation in two beats, from the flash to the
+    # remnant, whose core ends where the black hole of the next shot will be
+    Clip("x1_supernova", "nasa__supernova_4k.mp4", 32, 34, t_in=6.3, speed=[(0.0, 20.0), (0.3, 12.0), (1.0, 4.5)],
+         keys=[(0.0, 1.0, 0.5, 0.5, 0.0), (1.0, 1.5, 0.504, 0.561, 0.0, "io")], bloom=0.6,
+         tin=Cut(flash=1.2, punch=0.15, post=0.3)),
 
     # -------------------------------------------------- the black hole (34-40) ---
-    Clip("h1_hole", "nasa__bh_pullback_4k.mp4", 34, 36.1, t_in=5.0, speed=2.0, z=(1.10, 1.02), c=(0.5, 0.5), snare=0.6,
+    Clip("h1_hole", "nasa__bh_pullback_4k.mp4", 34, 36.1, t_in=5.0, speed=2.0, z=(1.28, 1.02), ease="out", c=(0.5, 0.5), snare=0.6,
          streak=0.0, exposure=0.9, tin=Dissolve(0.5, glow=0.5)),
     # the two black holes that have actually been photographed, on the quietest bars of the track
     ring("h2_m87", "eso__eso1907a.jpg", 36.1, 37, 0.494, 0.496, 0.116, R=0.175, grow=1.06, snare=0.5, bloom=0.4,
