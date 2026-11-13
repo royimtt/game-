@@ -1,0 +1,14 @@
+__pycache__/
+clips/
+stills/
+stills_src/
+board/
+frames/
+fitdisc_check.jpg
+*.mp4
+*.wav
+!voice/reditor_voice.wav
+!voice/reditor_voice_v2.wav
+!voice/song_tag.stem.wav
+*.onnx
+*.onnx.json
