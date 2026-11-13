@@ -115,7 +115,7 @@ def envelope_at(x, sr, ms=10.0):
 
 
 def build_tag(voice_path, text, seed=11, pitch_median=104.0, formant_ratio=0.93, stretch=1.08,
-              pre=0.62, tail=1.6, recording=None):
+              pre=0.62, tail=1.6, recording=None, presence=0.85, air=0.34, wide=0.42, wet=0.16, swell=0.30):
     """Returns (stereo stem at 48 kHz, index of the word onset, word length in samples, ...)."""
     rng = np.random.default_rng(seed)
     if recording:
@@ -126,7 +126,7 @@ def build_tag(voice_path, text, seed=11, pitch_median=104.0, formant_ratio=0.93,
     v = ss.resample_poly(deep16, SR, sr0)
     v = ss.sosfilt(ss.butter(2, 95.0, btype="high", fs=SR, output="sos"), v)
     # presence lift and gentle saturation so it cuts through a dense mix
-    v = v + 0.85 * band(1800.0, 5200.0, v, order=2)
+    v = v + presence * band(1800.0, 5200.0, v, order=2)
     v = np.tanh(1.6 * v / np.abs(v).max()) / np.tanh(1.6)
     fade = int(0.012 * SR)
     v[:fade] *= np.linspace(0, 1, fade)
@@ -144,15 +144,15 @@ def build_tag(voice_path, text, seed=11, pitch_median=104.0, formant_ratio=0.93,
         stem[start:e, 1] += sig[:e - start] * gain_r
 
     put(v, pre_n, 1.0, 1.0)                                   # centre voice
-    put(w, pre_n, 0.34, 0.34)                                 # whisper / air
+    put(w, pre_n, air, air)                                   # whisper / air
     # wide double: two slightly detuned, slightly late copies
-    for cents, delay, gl, gr in ((+9, 0.013, 0.42, 0.10), (-9, 0.019, 0.10, 0.42)):
+    for cents, delay, gl, gr in ((+9, 0.013, wide, 0.24 * wide), (-9, 0.019, 0.24 * wide, wide)):
         ratio = 2.0 ** (cents / 1200.0)
         d = ss.resample(v, int(round(len(v) / ratio)))
         put(d, pre_n + int(delay * SR), gl, gr)
     # dark plate on the voice + whisper
-    wet = plate(v + 0.5 * w, 1.5, rng)
-    stem[pre_n:pre_n + len(wet)][:L - pre_n] += wet[:L - pre_n] * 0.16
+    rev = plate(v + 0.5 * w, 1.5, rng)
+    stem[pre_n:pre_n + len(rev)][:L - pre_n] += rev[:L - pre_n] * wet
     # one eighth-note echo, band-limited, left-right
     echo = band(500.0, 3200.0, v, order=2)
     put(echo, pre_n + int(SR * (60.0 / 56.0) / 3.0), 0.05, 0.13)
@@ -162,7 +162,7 @@ def build_tag(voice_path, text, seed=11, pitch_median=104.0, formant_ratio=0.93,
     ramp = np.linspace(0.0, 1.0, len(sw)) ** 2.2
     hp = ss.butter(2, 320.0, btype="high", fs=SR, output="sos")
     sw = ss.sosfilt(hp, sw * ramp[:, None], axis=0)
-    stem[pre_n - len(sw):pre_n] += sw / (np.abs(sw).max() + 1e-9) * 0.30
+    stem[pre_n - len(sw):pre_n] += sw / (np.abs(sw).max() + 1e-9) * swell
     stem /= np.abs(stem).max()
     return stem, pre_n, n, sr0, deep16
 

@@ -1,0 +1,466 @@
+{
+ "nasa__iss_168.mp4": {
+  "title": "Earth from Space in 4K - Expedition 65 Edition",
+  "credit": "NASA Johnson Space Center",
+  "page": "https://images.nasa.gov/details/jsc2022m000172_Earth_in_4K_Expedition_65_Edition",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4",
+  "note": "segment of the film starting at 168 s"
+ },
+ "nasa__iss_2245.mp4": {
+  "title": "Earth from Space in 4K - Expedition 65 Edition",
+  "credit": "NASA Johnson Space Center",
+  "page": "https://images.nasa.gov/details/jsc2022m000172_Earth_in_4K_Expedition_65_Edition",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4",
+  "note": "segment of the film starting at 2245 s"
+ },
+ "nasa__iss_2840.mp4": {
+  "title": "Earth from Space in 4K - Expedition 65 Edition",
+  "credit": "NASA Johnson Space Center",
+  "page": "https://images.nasa.gov/details/jsc2022m000172_Earth_in_4K_Expedition_65_Edition",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4",
+  "note": "segment of the film starting at 2840 s"
+ },
+ "nasa__moontour.mp4": {
+  "title": "Tour of the Moon 4K Redux",
+  "credit": "NASA's Scientific Visualization Studio (Ernie Wright)",
+  "page": "https://svs.gsfc.nasa.gov/4619",
+  "licence": "Public domain",
+  "download": "https://svs.gsfc.nasa.gov/vis/a000000/a004600/a004619/moontour_notitle_2160p30.mp4"
+ },
+ "nasa__as08-14-2383.jpg": {
+  "title": "Earthrise (Apollo 8, AS08-14-2383)",
+  "credit": "NASA/Bill Anders",
+  "page": "https://images.nasa.gov/details/as08-14-2383",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/as08-14-2383/as08-14-2383~orig.jpg"
+ },
+ "nasa__sun_ballet.mp4": {
+  "title": "Solar prominence, 31 Dec 2012 (SDO Video Toolkit)",
+  "credit": "NASA's Goddard Space Flight Center (Scott Wiessinger, Tom Bridgman) / SDO",
+  "page": "https://svs.gsfc.nasa.gov/14126",
+  "licence": "Public domain",
+  "download": "https://svs.gsfc.nasa.gov/vis/a010000/a014100/a014126/4038_Solar_Ballet_CU_mk_II.mp4"
+ },
+ "webb__weic2603c.hd_1080p25_screen.mp4": {
+  "title": "JADES: GOODS South fly-through visualization",
+  "credit": "Visualization: C. Nieves (STScI), F. Summers (STScI), A. Pagan (STScI), G. Bacon (STScI); Science: JADES Team, K. Hainline (University of Arizona)",
+  "page": "https://esawebb.org/videos/weic2603c/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/videos/hd_1080p25_screen/weic2603c.mp4"
+ },
+ "eso__eso2414b.ultra_hd.mp4": {
+  "title": "Animation of a sub-Earth-mass planet orbiting Barnard’s star",
+  "credit": "ESO/M. Kornmesser",
+  "page": "https://www.eso.org/public/videos/eso2414b/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/videos/ultra_hd/eso2414b.mp4"
+ },
+ "eso__eso1615c.ultra_hd.mp4": {
+  "title": "Artist’s impression of the ultracool dwarf star TRAPPIST-1 from close to one of its planets",
+  "credit": "ESO/M. Kornmesser",
+  "page": "https://www.eso.org/public/videos/eso1615c/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/videos/ultra_hd/eso1615c.mp4"
+ },
+ "eso__eso1529a.ultra_hd.mp4": {
+  "title": "Artist’s impression of a Jupiter twin orbiting HIP 11915",
+  "credit": "ESO/M. Kornmesser",
+  "page": "https://www.eso.org/public/videos/eso1529a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/videos/ultra_hd/eso1529a.mp4"
+ },
+ "hub__heic1916b.ultra_hd.mp4": {
+  "title": "Animation of Exoplanet K2-18b (Artist’s Impression)",
+  "credit": "ESA/Hubble, M. Kornmesser",
+  "page": "https://esahubble.org/videos/heic1916b/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/videos/ultra_hd/heic1916b.mp4"
+ },
+ "hub__heic1209g.hd_1080p25_screen.mp4": {
+  "title": "Sunrise on HD 189733b (artist’s impression)",
+  "credit": "NASA, ESA, M. Kornmesser, F. Pont (Exeter University, UK), A. Lecavelier des Etangs (IAP/CNRS/UPMC, France)",
+  "page": "https://esahubble.org/videos/heic1209g/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1209g.mp4"
+ },
+ "nasa__bh_approach_4k.mp4": {
+  "title": "Black hole with accretion disk visualization (approach)",
+  "credit": "NASA's Scientific Visualization Studio / Robert Hurt (Caltech-IPAC)",
+  "page": "https://svs.gsfc.nasa.gov/14619",
+  "licence": "Public domain",
+  "download": "https://svs.gsfc.nasa.gov/vis/a010000/a014600/a014619/1-Approaching_a_black_hole-4K.mp4"
+ },
+ "nasa__bh_upclose_4k.mp4": {
+  "title": "Black Hole with Accretion Disk Visualization (up close)",
+  "credit": "NASA's Scientific Visualization Studio / Robert Hurt (Caltech-IPAC)",
+  "page": "https://svs.gsfc.nasa.gov/14619",
+  "licence": "Public domain",
+  "download": "https://svs.gsfc.nasa.gov/vis/a010000/a014600/a014619/4-Black_hole_up_close-4K.mp4"
+ },
+ "webb__carinanebula3.jpg": {
+  "title": "Carina Nebula Jets (NIRCam Narrowband Filters)",
+  "credit": "NASA, ESA, CSA, and STScI, J. DePasquale (STScI)",
+  "page": "https://esawebb.org/images/carinanebula3/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/carinanebula3.jpg"
+ },
+ "webb__weic2216b.jpg": {
+  "title": "Webb Takes a Stunning, Star-Filled Portrait of the Pillars of Creation (Full View)",
+  "credit": "NASA, ESA, CSA, STScI; J. DePasquale, A. Koekemoer, A. Pagan (STScI)",
+  "page": "https://esawebb.org/images/weic2216b/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2216b.jpg"
+ },
+ "webb__weic2212a.jpg": {
+  "title": "Tarantula Nebula (NIRCam Image)",
+  "credit": "NASA, ESA, CSA, and STScI",
+  "page": "https://esawebb.org/images/weic2212a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2212a.jpg"
+ },
+ "webb__weic2518a.jpg": {
+  "title": "Pismis 24 (NIRCam image)",
+  "credit": "NASA, ESA, CSA, and STScI, A. Pagan (STScI)",
+  "page": "https://esawebb.org/images/weic2518a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2518a.jpg"
+ },
+ "webb__weic2417a.jpg": {
+  "title": "Crab Nebula (MIRI and NIRCam image)",
+  "credit": "NASA, ESA, CSA, STScI, T. Temim (Princeton University)",
+  "page": "https://esawebb.org/images/weic2417a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2417a.jpg"
+ },
+ "webb__weic2330a.jpg": {
+  "title": "Cas A (NIRCam image)",
+  "credit": "NASA, ESA, CSA, STScI, D. Milisavljevic (Purdue University), T. Temim (Princeton University), I. De Looze (University of Gent)",
+  "page": "https://esawebb.org/images/weic2330a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2330a.jpg"
+ },
+ "eso__eso0907a.jpg": {
+  "title": "The Helix Nebula*",
+  "credit": "ESO",
+  "page": "https://www.eso.org/public/images/eso0907a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/images/large/eso0907a.jpg"
+ },
+ "hub__heic1310a.jpg": {
+  "title": "Hubble image of the Ring Nebula (Messier 57)",
+  "credit": "NASA, ESA, and C. Robert O’Dell (Vanderbilt University)",
+  "page": "https://esahubble.org/images/heic1310a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic1310a.jpg"
+ },
+ "webb__weic2207a.jpg": {
+  "title": "Southern Ring Nebula (NIRCam and MIRI Images Side by Side)",
+  "credit": "NASA, ESA, CSA, STScI, and the Webb ERO Production Team",
+  "page": "https://esawebb.org/images/weic2207a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2207a.jpg"
+ },
+ "hub__heic0506a.jpg": {
+  "title": "Out of this whirl: The Whirlpool Galaxy (M51) and companion galaxy",
+  "credit": "NASA, ESA, S. Beckwith (STScI), and The Hubble Heritage Team (STScI/AURA)",
+  "page": "https://esahubble.org/images/heic0506a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic0506a.jpg"
+ },
+ "webb__potm2412a.jpg": {
+  "title": "Close look at a local galaxy",
+  "credit": "ESA/Webb, NASA & CSA, A. Leroy",
+  "page": "https://esawebb.org/images/potm2412a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2412a.jpg"
+ },
+ "webb__potm2502a.jpg": {
+  "title": "Webb visits a star-forming spiral",
+  "credit": "ESA/Webb, NASA & CSA, A. Leroy",
+  "page": "https://esawebb.org/images/potm2502a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2502a.jpg"
+ },
+ "eso__eso9845d.jpg": {
+  "title": "Spiral galaxy NGC 1232",
+  "credit": "ESO",
+  "page": "https://www.eso.org/public/images/eso9845d/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/images/large/eso9845d.jpg"
+ },
+ "hub__opo0328a.jpg": {
+  "title": "Hubble mosaic of the majestic Sombrero Galaxy",
+  "credit": "NASA/ESA and The Hubble Heritage Team (STScI/AURA)",
+  "page": "https://esahubble.org/images/opo0328a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/opo0328a.jpg"
+ },
+ "hub__opo0501a.jpg": {
+  "title": "A poster-size image of the beautiful barred spiral galaxy NGC 1300",
+  "credit": "NASA, ESA, and The Hubble Heritage Team (STScI/AURA)",
+  "page": "https://esahubble.org/images/opo0501a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/opo0501a.jpg"
+ },
+ "hub__potw1345a.jpg": {
+  "title": "Antennae Galaxies reloaded",
+  "credit": "ESA/Hubble & NASA",
+  "page": "https://esahubble.org/images/potw1345a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/potw1345a.jpg"
+ },
+ "webb__potm2602a.jpg": {
+  "title": "The stellar lifecycle in a nearby spiral",
+  "credit": "ESA/Webb, NASA & CSA, A. Leroy",
+  "page": "https://esawebb.org/images/potm2602a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2602a.jpg"
+ },
+ "webb__weic2208a.jpg": {
+  "title": "Stephan’s Quintet (NIRCam + MIRI Imaging)",
+  "credit": "NASA, ESA, CSA, and STScI",
+  "page": "https://esawebb.org/images/weic2208a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2208a.jpg"
+ },
+ "webb__weic2211a.jpg": {
+  "title": "Cartwheel Galaxy (NIRCam and MIRI Composite Image)",
+  "credit": "NASA, ESA, CSA, STScI",
+  "page": "https://esawebb.org/images/weic2211a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2211a.jpg"
+ },
+ "webb__weic2426a.jpg": {
+  "title": "Galaxies IC 2163 and NGC 2207 (Webb and Hubble image)",
+  "credit": "NASA, ESA, CSA, STScI",
+  "page": "https://esawebb.org/images/weic2426a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2426a.jpg"
+ },
+ "webb__weic2420a.jpg": {
+  "title": "Interacting galaxies Arp 142 (NIRCam and MIRI image)",
+  "credit": "NASA, ESA, CSA, STScI",
+  "page": "https://esawebb.org/images/weic2420a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2420a.jpg"
+ },
+ "webb__potm2609a.jpg": {
+  "title": "Galaxies in a cosmic house of mirrors",
+  "credit": "ESA/Webb, NASA & CSA, L. Furtak, S. Fujimoto",
+  "page": "https://esawebb.org/images/potm2609a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2609a.jpg"
+ },
+ "webb__weic2209a.jpg": {
+  "title": "Webb’s First Deep Field (NIRCam Image)",
+  "credit": "NASA, ESA, CSA, and STScI",
+  "page": "https://esawebb.org/images/weic2209a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2209a.jpg"
+ },
+ "webb__potm2411a.jpg": {
+  "title": "Tracing spiral arms in infrared",
+  "credit": "ESA/Webb, NASA & CSA, A. Leroy",
+  "page": "https://esawebb.org/images/potm2411a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/potm2411a.jpg"
+ },
+ "hub__heic0715a.jpg": {
+  "title": "Extreme star cluster bursts into life in new Hubble image",
+  "credit": "NASA, ESA and the Hubble Heritage (STScI/AURA)-ESA/Hubble Collaboration",
+  "page": "https://esahubble.org/images/heic0715a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic0715a.jpg"
+ },
+ "hub__heic1808a.jpg": {
+  "title": "Hubble's 28th birthday picture: The Lagoon Nebula",
+  "credit": "NASA, ESA, STScI",
+  "page": "https://esahubble.org/images/heic1808a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic1808a.jpg"
+ },
+ "eso__eso1520a.jpg": {
+  "title": "ESO’s Very Large Telescope images the Medusa Nebula",
+  "credit": "ESO",
+  "page": "https://www.eso.org/public/images/eso1520a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/images/large/eso1520a.jpg"
+ },
+ "hub__heic0910h.jpg": {
+  "title": "Butterfly emerges from stellar demise in planetary nebula NGC 6302",
+  "credit": "NASA, ESA and the Hubble SM4 ERO Team",
+  "page": "https://esahubble.org/images/heic0910h/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic0910h.jpg"
+ },
+ "webb__weic2219a.jpg": {
+  "title": "Protostar L1527",
+  "credit": "NASA, ESA, CSA, and STScI, J. DePasquale (STScI)",
+  "page": "https://esawebb.org/images/weic2219a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2219a.jpg"
+ },
+ "hub__heic0503a.jpg": {
+  "title": "Light continues to echo three years after stellar outburst",
+  "credit": "NASA, ESA, and The Hubble Heritage Team (AURA/STScI)",
+  "page": "https://esahubble.org/images/heic0503a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic0503a.jpg"
+ },
+ "hub__heic1520a.jpg": {
+  "title": "Revisiting the Veil Nebula",
+  "credit": "NASA, ESA, Hubble Heritage Team",
+  "page": "https://esahubble.org/images/heic1520a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/publicationjpg/heic1520a.jpg"
+ },
+ "webb__weic2425a.jpg": {
+  "title": "NGC 602 (NIRCam and MIRI image)",
+  "credit": "ESA/Webb, NASA & CSA, P. Zeidler, E. Sabbi, A. Nota, M. Zamani (ESA/Webb)",
+  "page": "https://esawebb.org/images/weic2425a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2425a.jpg"
+ },
+ "hub__heic1007a.jpg": {
+  "title": "Hubble captures view of “Mystic Mountain”",
+  "credit": "NASA, ESA, M. Livio and the Hubble 20th Anniversary Team (STScI)",
+  "page": "https://esahubble.org/images/heic1007a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic1007a.jpg"
+ },
+ "nasa__supernova_4k.mp4": {
+  "title": "Supernova explosion animation",
+  "credit": "NASA's Goddard Space Flight Center Conceptual Image Lab",
+  "page": "https://svs.gsfc.nasa.gov/20413",
+  "licence": "Public domain",
+  "download": "https://svs.gsfc.nasa.gov/vis/a020000/a020400/a020413/SN_HQ_Full_H264_V001.mp4"
+ },
+ "nasa__bh_pullback_4k.mp4": {
+  "title": "Black hole with accretion disk visualization (pulling back)",
+  "credit": "NASA's Scientific Visualization Studio / Robert Hurt (Caltech-IPAC)",
+  "page": "https://svs.gsfc.nasa.gov/14619",
+  "licence": "Public domain",
+  "download": "https://svs.gsfc.nasa.gov/vis/a010000/a014600/a014619/3-Pulling_back_from_a_black_hole-4K.mp4"
+ },
+ "eso__eso1907a.jpg": {
+  "title": "First Image of a Black Hole",
+  "credit": "EHT Collaboration",
+  "page": "https://www.eso.org/public/images/eso1907a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/images/large/eso1907a.jpg"
+ },
+ "pad__sgra.jpg": {
+  "title": "First image of our black hole",
+  "credit": "EHT Collaboration",
+  "page": "https://www.eso.org/public/images/eso2208-eht-mwa/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/images/large/eso2208-eht-mwa.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "eso__black-hole-material.ultra_hd.mp4": {
+  "title": "Artist's impression of a black hole and the material surrounding it",
+  "credit": "ESO/M. Kornmesser",
+  "page": "https://www.eso.org/public/videos/black-hole-material/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.eso.org/videos/ultra_hd/black-hole-material.mp4"
+ },
+ "pl__pluto.jpg": {
+  "title": "The Rich Color Variations of Pluto",
+  "credit": "NASA/Johns Hopkins University Applied Physics Laboratory/Southwest Research Institute",
+  "page": "https://images.nasa.gov/details/PIA19952",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/PIA19952/PIA19952~orig.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__neptune.jpg": {
+  "title": "Neptune full disk (Voyager 2)",
+  "credit": "NASA/JPL",
+  "page": "https://images.nasa.gov/details/PIA01492",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/PIA01492/PIA01492~orig.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__uranus.jpg": {
+  "title": "Uranus (January 2025)",
+  "credit": "ESA/Webb, NASA, CSA, STScI, P. Tiranti, H. Melin, M. Zamani (ESA/Webb)",
+  "page": "https://esawebb.org/images/weic2602a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/weic2602a.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__saturn.jpg": {
+  "title": "The greatest Saturn portrait ...yet (Cassini)",
+  "credit": "NASA/JPL/Space Science Institute",
+  "page": "https://images.nasa.gov/details/PIA06193",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/PIA06193/PIA06193~orig.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__jupiter.jpg": {
+  "title": "Jupiter’s Colourful Palette",
+  "credit": "NASA, ESA, A. Simon (Goddard Space Flight Center), and M.H. Wong (University of California, Berkeley)",
+  "page": "https://esahubble.org/images/heic1914a/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esahubble.org/archives/images/large/heic1914a.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__jupiterw.jpg": {
+  "title": "Jupiter Showcases Auroras, Hazes (NIRCam Closeup)",
+  "credit": "NASA, ESA, Jupiter ERS Team; image processing by Judy Schmidt",
+  "page": "https://esawebb.org/images/jupiter-auroras1/",
+  "licence": "CC BY 4.0",
+  "download": "https://cdn.esawebb.org/archives/images/large/jupiter-auroras1.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__mars.jpg": {
+  "title": "Global colour view of Mars (Viking)",
+  "credit": "NASA/JPL/USGS",
+  "page": "https://images.nasa.gov/details/PIA00407",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/PIA00407/PIA00407~orig.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__moon.jpg": {
+  "title": "Earth's Moon (Galileo)",
+  "credit": "NASA/JPL/USGS",
+  "page": "https://images.nasa.gov/details/PIA00405",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/PIA00405/PIA00405~orig.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "pl__earth.jpg": {
+  "title": "The Blue Marble: Earth seen by the Apollo 17 crew (AS17-148-22727)",
+  "credit": "NASA/Apollo 17 crew",
+  "page": "https://images.nasa.gov/details/as17-148-22727",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/image/as17-148-22727/as17-148-22727~orig.jpg",
+  "note": "registered on a black 16:9 canvas with tools/prepare_stills.py"
+ },
+ "nasa__iss_2170.mp4": {
+  "title": "Earth from Space in 4K - Expedition 65 Edition",
+  "credit": "NASA Johnson Space Center",
+  "page": "https://images.nasa.gov/details/jsc2022m000172_Earth_in_4K_Expedition_65_Edition",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4",
+  "note": "segment of the film starting at 2170 s"
+ },
+ "nasa__iss_1225.mp4": {
+  "title": "Earth from Space in 4K - Expedition 65 Edition",
+  "credit": "NASA Johnson Space Center",
+  "page": "https://images.nasa.gov/details/jsc2022m000172_Earth_in_4K_Expedition_65_Edition",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4",
+  "note": "segment of the film starting at 1225 s"
+ },
+ "nasa__iss_168_rev.mp4": {
+  "title": "Earth from Space in 4K - Expedition 65 Edition",
+  "credit": "NASA Johnson Space Center",
+  "page": "https://images.nasa.gov/details/jsc2022m000172_Earth_in_4K_Expedition_65_Edition",
+  "licence": "Public domain",
+  "download": "https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4",
+  "note": "segment of the film starting at 168 s (2.0-13.6 s of it, reversed)"
+ }
+}

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Beat-synced montage renderer.
+"""Beat-synced montage renderer (v2).
 
-Footage is decoded through ffmpeg pipes, composited per frame in linear light
-with numpy/OpenCV (virtual camera, speed ramps with accumulation motion blur,
-zoom/whip blur, flashes, bloom, light rays, chromatic aberration, title
-typography, grade, grain) and piped back to ffmpeg/x264.
+A timeline of clips (video or stills) is rendered frame by frame in linear light:
+retimed sources (optical-flow slow motion, shutter-integrated fast motion), a virtual
+camera with real motion blur (zoom / spin / whip blur computed from the camera's
+velocity), two-sided transitions that hide the cut inside the blur, drum-driven
+reactions, depth-composited titles, bloom / halation / streaks, grade and grain.
 
-    python engine.py board                 # storyboard sheets of every shot
-    python engine.py render --out x.mp4    # full render (parallel by shot groups)
-    python engine.py frames 17.6 17.65     # dump single frames at given times
+    python engine.py board  --outdir board           # three frames per clip
+    python engine.py frames 17.6 --count 8           # full-size frames at given times
+    python engine.py strip  --beat 16 --n 40         # contact strip of consecutive frames
+    python engine.py render --out out.mp4            # chunked, resumable render
 """
 import argparse
 import math
@@ -21,22 +23,55 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLIPS = os.environ.get("SM_CLIPS", os.path.join(HERE, "clips"))
+STILLS = os.environ.get("SM_STILLS", os.path.join(HERE, "stills"))
 SONG = os.environ.get("SM_SONG", os.path.join(HERE, "song.wav"))
 
 # ---------------------------------------------------------------- timing ----
 BPM = 56.0
 BEAT = 60.0 / BPM          # dotted-quarter pulse of the 12/8 groove
 BEAT0 = 0.455              # time of beat 0 (first kick) in the song
-AUDIO_LEN = 53.06          # length of the supplied audio
-DURATION = 54.0            # picture runs slightly past the music for the fade
+DURATION = 54.0            # picture length; the music ends at 53.06 s
 
 
 def bt(k):
-    """Time in seconds of beat k (may be fractional: k + 1/3 is the 2nd eighth)."""
+    """Time in seconds of beat k (k + 1/3 is the second eighth of the beat)."""
     return BEAT0 + k * BEAT
 
 
-# ------------------------------------------------------------- colour i/o ---
+def bf(k, fps):
+    """Output frame on which beat k lands."""
+    return int(math.floor(bt(k) * fps + 0.35))
+
+
+# ---------------------------------------------------------------- maths -----
+def clamp(x, a=0.0, b=1.0):
+    return a if x < a else b if x > b else x
+
+
+def smooth(x):
+    x = clamp(x)
+    return x * x * (3 - 2 * x)
+
+
+def e_in(p, k=3.0):
+    """0 -> 1, accelerating."""
+    return clamp(p) ** k
+
+
+def e_out(q, k=4.0):
+    """1 -> 0, decelerating (fastest at q = 0)."""
+    return (1.0 - clamp(q)) ** k
+
+
+EASE = {
+    "lin": lambda x: x,
+    "io": smooth,
+    "in": lambda x: x * x * x,
+    "out": lambda x: 1 - (1 - x) ** 3,
+    "out5": lambda x: 1 - (1 - x) ** 5,
+    "in5": lambda x: x ** 5,
+}
+
 GAMMA = 2.2
 _LIN_LUT = ((np.arange(256, dtype=np.float32) / 255.0) ** GAMMA).astype(np.float32)
 
@@ -45,167 +80,18 @@ def to_lin(u8):
     return cv2.LUT(u8, _LIN_LUT)
 
 
-class Reader:
-    """Sequential reader of source frames (relative index 0 = frame at t_in)."""
-
-    def __init__(self, path, t_in, w, h, crop=None, hflip=False, vflip=False):
-        vf = []
-        if crop:
-            vf.append("crop=" + crop)
-        vf.append(f"scale={w}:{h}:flags=lanczos:in_color_matrix=bt709:in_range=tv")
-        if hflip:
-            vf.append("hflip")
-        if vflip:
-            vf.append("vflip")
-        cmd = ["ffmpeg", "-v", "error", "-ss", f"{max(t_in, 0):.4f}", "-i", path,
-               "-an", "-sn", "-vf", ",".join(vf), "-pix_fmt", "rgb24",
-               "-f", "rawvideo", "-"]
-        self.p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                  bufsize=w * h * 3 * 2)
-        self.w, self.h, self.n = w, h, w * h * 3
-        self.idx = -1
-        self.cur = None
-        self.prev = None
-        self.eof = False
-        self._cache_key = None
-        self._cache = None
-
-    def _next(self):
-        if self.eof:
-            return False
-        buf = self.p.stdout.read(self.n)
-        if len(buf) < self.n:
-            self.eof = True
-            return False
-        self.prev = self.cur
-        self.cur = np.frombuffer(buf, np.uint8).reshape(self.h, self.w, 3)
-        self.idx += 1
-        return True
-
-    def blend(self, i, fr):
-        """Linear-light mix of source frames i and i+1 (slow motion below 1 frame/step)."""
-        key = ("b", i, round(fr, 3))
-        if key == self._cache_key:
-            return self._cache
-        while self.idx < i + 1 and self._next():
-            pass
-        if self.cur is None:
-            self._next()
-        if self.idx >= i + 1 and self.prev is not None and fr > 0.02:
-            out = cv2.addWeighted(to_lin(self.prev), 1.0 - fr, to_lin(self.cur), fr, 0.0)
-        elif self.idx >= i + 1 and self.prev is not None:
-            out = to_lin(self.prev)
-        else:
-            out = to_lin(self.cur)
-        self._cache_key, self._cache = key, out
-        return out
-
-    def window(self, p0, p1):
-        """Linear-light box-shutter integral of the source over [p0, p1) (in source frames)."""
-        key = ("w", round(p0, 4), round(p1, 4))
-        if key == self._cache_key:
-            return self._cache
-        ia = int(math.floor(p0 + 1e-9))
-        ib = max(int(math.ceil(p1 - 1e-9)) - 1, ia)
-        parts = []
-        for i in range(ia, ib + 1):
-            w = min(i + 1.0, p1) - max(float(i), p0)
-            if w < 0.02 and ib > ia:
-                continue
-            if i == self.idx - 1 and self.prev is not None:
-                frame = self.prev
-            else:
-                while self.idx < i and self._next():
-                    pass
-                if self.cur is None:
-                    self._next()
-                frame = self.cur
-            parts.append((frame, w))
-        wsum = sum(w for _, w in parts)
-        if len(parts) == 1:
-            acc = to_lin(parts[0][0])
-        else:
-            acc = None
-            for frame, w in parts:
-                lin = to_lin(frame)
-                if acc is None:
-                    acc = lin
-                    acc *= w / wsum
-                else:
-                    cv2.scaleAdd(lin, w / wsum, acc, acc)
-        self._cache_key, self._cache = key, acc
-        return acc
-
-    def close(self):
-        try:
-            self.p.stdout.close()
-            self.p.kill()
-            self.p.wait()
-        except Exception:
-            pass
+def frand(*key):
+    """Deterministic pseudo-random float in [-1, 1] from integer keys."""
+    h = 1469598103934665603
+    for k in key:
+        h = ((h ^ (int(k) & 0xFFFFFFFF)) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    h ^= h >> 29
+    h = (h * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF
+    h ^= h >> 32
+    return (h & 0xFFFFFF) / float(0x7FFFFF) - 1.0
 
 
-# ------------------------------------------------------------------ shots ---
-SHOT_DEFAULTS = dict(
-    step=1.0,            # source frames consumed per output frame at 60 fps
-    ramp=0.0,            # extra speed at shot start: step * (1 + ramp * exp(-t/ramp_tau))
-    ramp_tau=0.12,
-    crop=None, hflip=False, vflip=False,
-    z0=1.02, z1=1.08,    # slow push across the shot (zoom factor)
-    c0=(0.5, 0.5), c1=None,   # normalised source point kept at the frame centre
-    rot0=0.0, rot1=0.0,       # degrees
-    tin="flash",         # flash | whip_l | whip_r | whip_u | whip_d | spin_l | spin_r | cut | fade
-    fade_in=0.55,        # seconds, for tin="fade"
-    flash=1.6,           # exposure burst on entry
-    zp=0.22,             # zoom punch on entry
-    tout="zoom",         # zoom | none | whip (follows next shot's whip) | fade
-    zo=0.30,             # zoom acceleration on exit
-    fo=0.9,              # exposure pre-flash on exit
-    ca=0.010,            # chromatic aberration burst on entry
-    shake=0.006,         # entry camera shake (fraction of width)
-    pulse=0.0,           # eighth-note exposure pulses inside the shot
-    accent=0.0,          # exposure / zoom bump on every whole beat inside the shot
-    exposure=1.0, sat=1.0, black=0.0, gamma=1.0,
-    tone=None,           # per-channel exponents on the footage only, e.g. (2.4, 1.5, 0.9):
-                         # highlights stay white-hot, everything dimmer falls off to blue
-    keys=None,           # [(frac, zoom, cx, cy, ease)] overrides z0/z1/c0/c1
-    bloom=0.55, rays=0.0, rays_at=None,
-    streak=0.25,
-    note="",
-)
-
-
-class Shot:
-    def __init__(self, sid, clip, t_in, k0, k1, **kw):
-        self.id, self.clip, self.t_in, self.k0, self.k1 = sid, clip, t_in, k0, k1
-        d = dict(SHOT_DEFAULTS)
-        bad = set(kw) - set(d)
-        if bad:
-            raise KeyError(f"unknown shot option(s) {bad} in {sid}")
-        d.update(kw)
-        self.__dict__.update(d)
-        if self.c1 is None:
-            self.c1 = self.c0
-        self.f0 = self.f1 = 0     # output frame range, filled by layout()
-
-    @property
-    def path(self):
-        return os.path.join(CLIPS, self.clip)
-
-
-def layout(shots, fps):
-    """Assign output frame ranges; cuts land on the frame nearest each beat."""
-    total = int(round(DURATION * fps))
-    for i, s in enumerate(shots):
-        s.f0 = 0 if i == 0 else int(math.floor(bt(s.k0) * fps + 0.35))
-    for i, s in enumerate(shots):
-        s.f1 = shots[i + 1].f0 if i + 1 < len(shots) else total
-        s.index = i
-        s.prev = shots[i - 1] if i else None
-        s.next = shots[i + 1] if i + 1 < len(shots) else None
-    return total
-
-
+# -------------------------------------------------------------- sources -----
 _probe_cache = {}
 
 
@@ -221,716 +107,873 @@ def probe(path):
     return _probe_cache[path]
 
 
-def step_positions(shot, fps):
-    """Source frame position at the start of every output frame of the shot."""
-    J = shot.f1 - shot.f0
-    k = 60.0 / fps
-    j = np.arange(J + 1, dtype=np.float64)
-    st = shot.step * k * (1.0 + shot.ramp * np.exp(-j / (shot.ramp_tau * fps)))
-    pos = np.concatenate([[0.0], np.cumsum(st[:-1])])
-    base = shot.step * k
-    for q in (1.0, 0.5):
-        if abs(base / q - round(base / q)) < 1e-6:
-            # land on whole (or half) source frames once the ramp has settled, so steady
-            # frames stay sharp instead of sitting on an arbitrary blend
-            pos = np.maximum(pos - (pos[-1] - math.floor(pos[-1] / q + 1e-6) * q), 0.0)
-            break
-    return pos
+class VideoSource:
+    """Sequential decoder with fractional-frame sampling.
+
+    Positions are source frames counted from `start` seconds; requests must not go
+    backwards by more than two frames.
+    """
+
+    def __init__(self, path, start, w, h, crop=None, flip=False):
+        self.path = path
+        vf = []
+        if crop:
+            vf.append("crop=" + crop)
+        if flip:
+            vf.append("hflip")
+        vf.append(f"scale={w}:{h}:flags=lanczos:in_color_matrix=bt709:in_range=tv")
+        cmd = ["ffmpeg", "-v", "error", "-ss", f"{max(start, 0):.4f}", "-i", path, "-an", "-sn",
+               "-vf", ",".join(vf), "-pix_fmt", "rgb24", "-f", "rawvideo", "-"]
+        self.p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=w * h * 3 * 2)
+        self.w, self.h, self.n = w, h, w * h * 3
+        self.idx = -1
+        self.frames = {}
+        self.eof = False
+        self._flow_key = None
+        self._flow = None
+        self._dis = None
+
+    def _next(self):
+        if self.eof:
+            return False
+        buf = self.p.stdout.read(self.n)
+        if len(buf) < self.n:
+            self.eof = True
+            return False
+        self.idx += 1
+        self.frames[self.idx] = np.frombuffer(buf, np.uint8).reshape(self.h, self.w, 3)
+        for k in [k for k in self.frames if k < self.idx - 3]:
+            del self.frames[k]
+        return True
+
+    def frame(self, i):
+        i = max(int(i), 0)
+        while self.idx < i and self._next():
+            pass
+        if not self.frames:
+            self._next()
+        if i in self.frames:
+            return self.frames[i]
+        return self.frames[min(max(i, min(self.frames)), max(self.frames))]
+
+    def _interp(self, i, a):
+        """Motion-compensated in-between frame (dense optical flow, both neighbours warped)."""
+        A, B = self.frame(i), self.frame(i + 1)
+        if A is B:
+            return A
+        if self._flow_key != i:
+            sc = 640.0 / self.w
+            sw, sh = int(self.w * sc), int(self.h * sc)
+            ga = cv2.cvtColor(cv2.resize(A, (sw, sh), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY)
+            gb = cv2.cvtColor(cv2.resize(B, (sw, sh), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY)
+            if self._dis is None:
+                self._dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
+                self._gx, self._gy = np.meshgrid(np.arange(self.w, dtype=np.float32), np.arange(self.h, dtype=np.float32))
+            fl = self._dis.calc(ga, gb, None)
+            fl = cv2.GaussianBlur(fl, (0, 0), 1.5)
+            fl = cv2.resize(fl, (self.w, self.h), interpolation=cv2.INTER_LINEAR) * (1.0 / sc)
+            self._flow_key, self._flow = i, fl
+        fl = self._flow
+        ka, kb = np.float32(a), np.float32(1.0 - a)
+        Aw = cv2.remap(A, self._gx - ka * fl[..., 0], self._gy - ka * fl[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        Bw = cv2.remap(B, self._gx + kb * fl[..., 0], self._gy + kb * fl[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        return cv2.addWeighted(Aw, 1.0 - a, Bw, a, 0.0)
+
+    def sample(self, p, span, flow=True, shutter=0.7):
+        """Linear-light image at source position p; `span` = source frames per output frame."""
+        p, span = max(float(p), 0.0), float(span)
+        if span >= 1.3:                      # fast motion: integrate the frames the shutter sees
+            p1 = p + span * shutter
+            ia, ib = int(math.floor(p)), int(math.ceil(p1 - 1e-6)) - 1
+            acc, wsum = None, 0.0
+            for i in range(ia, max(ib, ia) + 1):
+                w = float(min(i + 1.0, p1) - max(float(i), p))
+                if w < 0.03 and ib > ia:
+                    continue
+                lin = to_lin(self.frame(i))
+                acc = lin * np.float32(w) if acc is None else cv2.scaleAdd(lin, w, acc)
+                wsum += w
+            return acc * np.float32(1.0 / wsum) if abs(wsum - 1.0) > 1e-6 else acc
+        i = int(math.floor(p))
+        a = p - i
+        if a < 0.04:
+            return to_lin(self.frame(i))
+        if a > 0.96:
+            return to_lin(self.frame(i + 1))
+        if flow:
+            return to_lin(self._interp(i, a))
+        return cv2.addWeighted(to_lin(self.frame(i)), 1.0 - a, to_lin(self.frame(i + 1)), a, 0.0)
+
+    def close(self):
+        try:
+            self.p.stdout.close()
+            self.p.kill()
+            self.p.wait()
+        except Exception:
+            pass
 
 
-# ---------------------------------------------------------------- effects ---
-def ease_io(x):
-    return x * x * (3 - 2 * x)
+_still_cache = {}
 
 
+class StillSource:
+    """A still with a mip pyramid, so zooming out never aliases."""
+
+    def __init__(self, path, max_side=7000):
+        img = cv2.imread(path, cv2.IMREAD_COLOR)
+        if img is None:
+            raise IOError(f"cannot read {path}")
+        h, w = img.shape[:2]
+        if max(h, w) > max_side:
+            s = max_side / float(max(h, w))
+            img = cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
+        self.levels = [cv2.cvtColor(img, cv2.COLOR_BGR2RGB)]
+        self.h, self.w = self.levels[0].shape[:2]
+
+    def level(self, k):
+        while len(self.levels) <= k:
+            a = self.levels[-1]
+            self.levels.append(cv2.resize(a, (max(a.shape[1] // 2, 1), max(a.shape[0] // 2, 1)), interpolation=cv2.INTER_AREA))
+        return self.levels[k]
+
+
+def still(path):
+    if path not in _still_cache:
+        if len(_still_cache) > 5:
+            _still_cache.pop(next(iter(_still_cache)))
+        _still_cache[path] = StillSource(path)
+    return _still_cache[path]
+
+
+# ---------------------------------------------------------- transitions -----
+IDENT = dict(z=1.0, dx=0.0, dy=0.0, rot=0.0, gain=1.0, glow=0.0, ca=0.0, rgb=0.0, ax=0.5, ay=0.5)
+
+
+def merge(a, b):
+    out = dict(a)
+    for k, v in b.items():
+        if k in ("z", "gain"):
+            out[k] = out.get(k, 1.0) * v
+        elif k in ("ax", "ay"):
+            out[k] = v
+        else:
+            out[k] = out.get(k, 0.0) + v
+    return out
+
+
+class Cut:
+    """Hard cut. `flash` adds an exposure burst on the first frames of the new shot."""
+    pre = 0.0
+    mix = None
+
+    def __init__(self, flash=0.0, post=0.12, punch=0.0, rgb=0.0):
+        self.flash, self.punch, self.rgb, self.post = flash, punch, rgb, post
+
+    def out(self, p):
+        return {}
+
+    def inc(self, q):
+        d = {}
+        if self.flash:
+            d["gain"] = 1.0 + self.flash * e_out(q, 3)
+            d["glow"] = 0.8 * self.flash * e_out(q, 2)
+        if self.punch:
+            d["z"] = 1.0 + self.punch * e_out(q, 4)
+        if self.rgb:
+            d["rgb"] = self.rgb * e_out(q, 2)
+        return d
+
+
+class Punch(Cut):
+    """Cut that lands zoomed-in and settles: the classic beat hit."""
+
+    def __init__(self, punch=0.28, flash=0.9, post=0.34, rgb=0.004):
+        Cut.__init__(self, flash=flash, post=post, punch=punch, rgb=rgb)
+
+
+class Zoom:
+    """Fly-through. kind='in': both shots grow (camera moves forward); 'out': both shrink."""
+    mix = None
+
+    def __init__(self, kind="in", s_out=2.3, s_in=2.6, pre=0.11, post=0.34, flash=0.7, at=(0.5, 0.5), rot=0.0, dark=0.0):
+        self.kind, self.s_out, self.s_in, self.pre, self.post, self.flash, self.at, self.rot, self.dark = \
+            kind, s_out, s_in, pre, post, flash, at, rot, dark
+
+    def out(self, p):
+        e = e_in(p)
+        z = self.s_out ** e if self.kind == "in" else self.s_out ** (-e)
+        return dict(z=z, gain=1.0 + 0.9 * self.flash * e, glow=0.6 * self.flash * e, ax=self.at[0], ay=self.at[1],
+                    rot=self.rot * e, ca=0.012 * e)
+
+    def inc(self, q):
+        e = e_out(q, 5.0)
+        z = self.s_in ** (-e) if self.kind == "in" else self.s_in ** e
+        gain = (1.0 + self.flash * e_out(q, 3)) * (1.0 - self.dark * e_out(q, 2))     # dark: arrive out of blackness
+        return dict(z=z, gain=gain, glow=self.flash * e_out(q, 2), rot=-self.rot * e, ca=0.014 * e,
+                    ax=self.at[0], ay=self.at[1])
+
+
+class Whip:
+    """Whip pan: both shots travel the same way; `d` is the direction the camera turns."""
+    mix = None
+    DIR = {"l": (-1, 0), "r": (1, 0), "u": (0, -1), "d": (0, 1)}
+
+    def __init__(self, d="l", travel=1.15, pre=0.10, post=0.34, flash=0.5, tilt=0.0, zoom=0.12):
+        self.v = self.DIR[d]
+        self.travel, self.pre, self.post, self.flash, self.tilt, self.zoom = travel, pre, post, flash, tilt, zoom
+
+    def out(self, p):
+        e = e_in(p)
+        k = self.travel * (1.0 if self.v[0] else 9.0 / 16.0)
+        return dict(dx=-self.v[0] * k * e, dy=-self.v[1] * k * e, rot=self.tilt * e, z=1.0 + self.zoom * e,
+                    gain=1.0 + 0.6 * self.flash * e, glow=0.4 * self.flash * e)
+
+    def inc(self, q):
+        e = e_out(q, 5.0)
+        k = self.travel * (1.0 if self.v[0] else 9.0 / 16.0)
+        return dict(dx=self.v[0] * k * e, dy=self.v[1] * k * e, rot=-self.tilt * e, z=1.0 + self.zoom * e,
+                    gain=1.0 + self.flash * e_out(q, 3), glow=0.7 * self.flash * e_out(q, 2))
+
+
+class Spin:
+    """Roll transition with rotational blur."""
+    mix = None
+
+    def __init__(self, deg=60.0, zoom=0.45, pre=0.11, post=0.36, flash=0.6):
+        self.deg, self.zoom, self.pre, self.post, self.flash = deg, zoom, pre, post, flash
+
+    def out(self, p):
+        e = e_in(p)
+        return dict(rot=self.deg * e, z=1.0 + self.zoom * e, gain=1.0 + 0.7 * self.flash * e, glow=0.5 * self.flash * e)
+
+    def inc(self, q):
+        e = e_out(q)
+        return dict(rot=-self.deg * e, z=1.0 + self.zoom * e, gain=1.0 + self.flash * e_out(q, 3),
+                    glow=0.8 * self.flash * e_out(q, 2))
+
+
+class Dissolve:
+    """Cross-dissolve through light; centred on the cut."""
+    pre = post = 0.0
+
+    def __init__(self, dur=0.5, glow=0.6):
+        self.dur, self.glow = dur, glow
+        self.mix = ("xfade", dur / 2.0, dur / 2.0)
+
+    def out(self, p):
+        return {}
+
+    def inc(self, q):
+        return {}
+
+    def blend(self, a, b, x, ctx):
+        k = smooth(x)
+        out = cv2.addWeighted(a, 1.0 - k, b, k, 0.0)
+        ctx["glow"] = ctx.get("glow", 0.0) + self.glow * math.sin(math.pi * clamp(x))
+        return out
+
+
+class Iris:
+    """The new shot opens from a point (a star, an event horizon) behind a glowing rim."""
+    pre = post = 0.0
+
+    def __init__(self, at=(0.5, 0.5), dur=0.45, soft=0.035, rim=1.6, color=(0.8, 0.9, 1.0), ease="in", flash=0.0,
+                 post=0.0, punch=0.0):
+        self.at, self.dur, self.soft, self.rim, self.color, self.ease, self.flash = at, dur, soft, rim, color, ease, flash
+        self.post, self.punch = post, punch
+        self.mix = ("iris", 0.0, dur)
+
+    def out(self, p):
+        return {}
+
+    def inc(self, q):
+        if not self.punch:
+            return {}
+        return dict(z=1.0 + self.punch * e_out(q, 3), ax=self.at[0], ay=self.at[1])
+
+    def blend(self, a, b, x, ctx):
+        H, W = a.shape[:2]
+        r = ctx["grid_r"](self.at)
+        g = e_in(x, 2.2) if self.ease == "in" else 1.0 - (1.0 - clamp(x)) ** 2.4
+        rad = (1.25 * g + 0.02 * x) * W
+        if self.flash:
+            ctx["glow"] = ctx.get("glow", 0.0) + self.flash * (1.0 - clamp(x)) ** 2
+        m = np.clip((rad - r) / (self.soft * W) + 0.5, 0.0, 1.0)
+        m3 = cv2.merge([m, m, m])
+        out = a * (1.0 - m3) + b * m3
+        k = self.rim * (1.0 - clamp(x)) ** 1.5
+        wd = 0.004 * W + 0.012 * rad
+        for i, off in enumerate((0.006, 0.0, -0.006)):                       # the rim splits like a prism
+            out[..., i] += np.exp(-((r - rad * (1.0 + off)) / wd) ** 2) * (k * self.color[i])
+        out += (np.exp(-((r - rad) / (4.0 * wd)) ** 2) * (0.25 * k))[..., None] * np.array(self.color, np.float32)
+        return out
+
+
+# ---------------------------------------------------------------- clips -----
+CLIP_DEFAULTS = dict(
+    t_in=0.0,            # source in-point (s) of video clips
+    speed=1.0,           # playback rate (1 = real time) or [(u, rate), ...] for a speed ramp
+    flow=True,           # optical-flow interpolation for slow motion
+    crop=None, flip=False,
+    border="mirror",     # what lies beyond the picture when a transition shrinks it: "mirror" or "black"
+    keys=None,           # camera keys [(u, zoom, cx, cy, rot, ease)]; default: slow push
+    z=(1.03, 1.10), c=(0.5, 0.5), c1=None, rot=(0.0, 0.0), ease="lin",
+    tin=None,            # transition into this clip
+    exposure=1.0, sat=1.0, gamma=1.0, tone=None, black=0.0,
+    sharpen=None,        # overrides the grade's sharpening (noisy night footage wants less)
+    bloom=0.5, streak=0.2,
+    kick=1.0, snare=1.0,  # strength of the drum reactions on this clip
+    occ=None,            # what stands in front of depth-composited text: dict(lum=(lo, hi), discs=[...])
+    note="",
+)
+
+
+class Clip:
+    def __init__(self, cid, src, k0, k1, **kw):
+        self.id, self.src, self.k0, self.k1 = cid, src, k0, k1
+        d = dict(CLIP_DEFAULTS)
+        bad = set(kw) - set(d)
+        if bad:
+            raise KeyError(f"unknown clip option(s) {bad} in {cid}")
+        d.update(kw)
+        self.__dict__.update(d)
+        self.kind = "still" if src.lower().endswith((".jpg", ".jpeg", ".png", ".tif")) else "video"
+        self.path = os.path.join(STILLS if self.kind == "still" else CLIPS, src)
+        if self.keys is None:
+            c1 = self.c1 or self.c
+            self.keys = [(0.0, self.z[0], self.c[0], self.c[1], self.rot[0]), (1.0, self.z[1], c1[0], c1[1], self.rot[1], self.ease)]
+
+    def cam(self, p):
+        ks = self.keys
+        a, b = ks[0], ks[-1]
+        if len(ks) == 1:
+            return a[1], a[2], a[3], a[4]
+        if p <= ks[0][0]:
+            a, b = ks[0], ks[1]
+        elif p >= ks[-1][0]:
+            a, b = ks[-2], ks[-1]
+        else:
+            for i in range(len(ks) - 1):
+                if ks[i][0] <= p <= ks[i + 1][0]:
+                    a, b = ks[i], ks[i + 1]
+                    break
+        f = (p - a[0]) / (b[0] - a[0])
+        if 0.0 <= f <= 1.0:
+            f = EASE[b[5] if len(b) > 5 else "lin"](f)
+        z = math.exp(math.log(a[1]) + (math.log(b[1]) - math.log(a[1])) * f)     # outside the keys: keep drifting
+        return z, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f, a[4] + (b[4] - a[4]) * f
+
+
+def layout(clips, fps):
+    total = int(round(DURATION * fps))
+    for i, c in enumerate(clips):
+        c.f0 = 0 if i == 0 else bf(c.k0, fps)
+    for i, c in enumerate(clips):
+        c.f1 = clips[i + 1].f0 if i + 1 < len(clips) else total
+        c.index = i
+        c.prev = clips[i - 1] if i else None
+        c.next = clips[i + 1] if i + 1 < len(clips) else None
+        assert c.f1 > c.f0, f"clip {c.id} is empty"
+    return total
+
+
+def speed_at(c, u):
+    s = c.speed
+    if not isinstance(s, (list, tuple)):
+        return float(s)
+    if u <= s[0][0]:
+        return s[0][1]
+    for (u0, s0), (u1, s1) in zip(s, s[1:]):
+        if u0 <= u <= u1:
+            return s0 + (s1 - s0) * (u - u0) / max(u1 - u0, 1e-9)
+    return s[-1][1]
+
+
+def positions(c, fps, lead, tail):
+    """Source frame position (relative to t_in) for output frames f0-lead .. f1+tail."""
+    sfps = probe(c.path)[2]
+    n = c.f1 - c.f0
+    js = np.arange(-lead, n + tail + 1)
+    rate = np.array([speed_at(c, clamp(j / max(n, 1))) for j in js]) * sfps / fps
+    pos = np.concatenate([[0.0], np.cumsum(rate[:-1])])
+    pos -= pos[lead]                     # position 0 at the cut-in frame
+    return pos, rate
+
+
+# ------------------------------------------------------------ blur ops ------
+def blur_dir(img, px, horizontal=True):
+    L = int(min(abs(px), 0.9 * (img.shape[1] if horizontal else img.shape[0])))
+    if L < 3:
+        return img
+    k = (L | 1, 1) if horizontal else (1, L | 1)
+    k2 = ((k[0] // 2) | 1, (k[1] // 2) | 1)
+    return cv2.blur(cv2.blur(img, k, borderType=cv2.BORDER_REFLECT_101), k2, borderType=cv2.BORDER_REFLECT_101)
+
+
+def _far(W, H, cx, cy):
+    return max(math.hypot(cx, cy), math.hypot(W - cx, cy), math.hypot(cx, H - cy), math.hypot(W - cx, H - cy))
+
+
+def _to_polar(img, cx, cy, far, Wr, Ha, log):
+    """Polar resampling with reflected borders (cv2.warpPolar leaves samples outside the picture undefined)."""
+    i = np.arange(Wr, dtype=np.float32)[None, :]
+    th = (np.arange(Ha, dtype=np.float32) * (2.0 * math.pi / Ha))[:, None]
+    r = np.exp(i * (math.log(far) / (Wr - 1))) if log else i * (far / (Wr - 1))
+    return cv2.remap(img, cx + r * np.cos(th), cy + r * np.sin(th), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+
+
+def _from_polar(pol, W, H, cx, cy, far, log):
+    Ha, Wr = pol.shape[:2]
+    dx, dy = np.meshgrid(np.arange(W, dtype=np.float32) - np.float32(cx), np.arange(H, dtype=np.float32) - np.float32(cy))
+    r = np.sqrt(dx * dx + dy * dy)
+    if log:
+        i = np.log(np.maximum(r, 1.0)) * ((Wr - 1) / math.log(far))
+    else:
+        i = r * ((Wr - 1) / far)
+    j = np.mod(np.arctan2(dy, dx) * (Ha / (2.0 * math.pi)), Ha) + 2.0
+    pol = cv2.copyMakeBorder(pol, 2, 2, 0, 0, cv2.BORDER_WRAP)
+    return cv2.remap(pol, i.astype(np.float32), j.astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE), r
+
+
+def blur_zoom(img, center, ratio):
+    """Radial motion blur for a zoom by `ratio` during the shutter."""
+    H, W = img.shape[:2]
+    lr = abs(math.log(max(ratio, 1e-6)))
+    cx, cy = center
+    far = _far(W, H, cx, cy)
+    travel = far * (math.exp(lr) - 1.0)
+    if travel < 1.5:
+        return img
+    if lr < 0.07:                                      # small: a few rescaled copies (stays sharp at the centre)
+        n = int(min(max(math.ceil(travel / 3.0), 2), 14))
+        acc = np.zeros_like(img)
+        for i in range(n):
+            s = math.exp(lr * (i / (n - 1.0) - 0.5))
+            m = np.array([[s, 0, cx * (1 - s)], [0, s, cy * (1 - s)]], dtype=np.float64)
+            acc += cv2.warpAffine(img, m, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+        return acc * (1.0 / n)
+    # large: box blur along log-radius in log-polar space
+    Wr, Ha = 1024, 1536
+    pol = _to_polar(img, cx, cy, far, Wr, Ha, True)
+    k = int(max(lr / math.log(far) * Wr, 1)) | 1
+    pol = cv2.blur(pol, (k, 1), borderType=cv2.BORDER_REPLICATE)
+    out, r = _from_polar(pol, W, H, cx, cy, far, True)
+    w = np.clip((r * (math.exp(lr) - 1.0) - 2.0) / 6.0, 0.0, 1.0)     # the round trip is soft near the centre
+    w3 = cv2.merge([w, w, w])
+    return img * (1.0 - w3) + out * w3
+
+
+def blur_spin(img, center, deg):
+    """Rotational motion blur for a roll of `deg` degrees during the shutter."""
+    H, W = img.shape[:2]
+    cx, cy = center
+    far = _far(W, H, cx, cy)
+    if abs(math.radians(deg)) * far < 2.0:
+        return img
+    Wr, Ha = 900, 2160
+    pol = _to_polar(img, cx, cy, far, Wr, Ha, False)
+    k = int(max(abs(deg) / 360.0 * Ha, 1)) | 1
+    pad = k // 2 + 1
+    pol = cv2.copyMakeBorder(pol, pad, pad, 0, 0, cv2.BORDER_WRAP)
+    pol = np.ascontiguousarray(cv2.blur(pol, (1, k))[pad:-pad])
+    out, r = _from_polar(pol, W, H, cx, cy, far, False)
+    w = np.clip((r * abs(math.radians(deg)) - 2.0) / 6.0, 0.0, 1.0)
+    w3 = cv2.merge([w, w, w])
+    return img * (1.0 - w3) + out * w3
+
+
+# -------------------------------------------------------------- finishing ---
 class Look:
-    """Frame-size dependent precomputed fields (vignette, grain)."""
-
     def __init__(self, W, H, seed=7):
         self.W, self.H = W, H
         yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+        self.xx, self.yy = xx, yy
         nx = (xx - W / 2) / (W / 2)
         ny = (yy - H / 2) / (W / 2)
-        r2 = nx * nx + ny * ny
-        self.vig = (1.0 - 0.30 * np.clip(r2, 0, 2) ** 1.25).astype(np.float32)
-        self.vig3 = cv2.merge([self.vig] * 3)
+        self.r2 = nx * nx + ny * ny
+        v = (1.0 - 0.26 * np.clip(self.r2, 0, 2) ** 1.3).astype(np.float32)
+        self.vig3 = cv2.merge([v, v, v])
         rng = np.random.default_rng(seed)
         self.grain = []
         for _ in range(6):
             g = rng.standard_normal((H + 96, W + 96)).astype(np.float32)
             g = cv2.GaussianBlur(g, (0, 0), 0.62 * W / 1920.0 + 0.25)
-            g /= g.std()
-            self.grain.append(g)
-        self.rng = rng
+            self.grain.append(g / g.std())
 
-    def grain_field(self):
-        g = self.grain[int(self.rng.integers(len(self.grain)))]
-        oy, ox = (int(v) for v in self.rng.integers(0, 96, 2))
+    def grain_field(self, f):
+        g = self.grain[f % len(self.grain)]
+        oy, ox = int((frand(f, 11) + 1) * 47), int((frand(f, 12) + 1) * 47)
         return g[oy:oy + self.H, ox:ox + self.W]
 
 
-def affine(sw, sh, W, H, z, cx, cy, rot_deg, dx, dy):
-    """Inverse map (output px -> source px) for cv2.warpAffine(WARP_INVERSE_MAP)."""
-    b = sw / float(W)
-    s = b / z
-    th = math.radians(rot_deg)
-    co, si = math.cos(th) * s, math.sin(th) * s
-    ox, oy = W / 2.0 + dx, H / 2.0 + dy
-    m = np.array([[co, -si, cx * sw - co * ox + si * oy],
-                  [si, co, cy * sh - si * ox - co * oy]], dtype=np.float64)
-    return m
-
-
-def clamp_center(z, cx, cy):
-    hw = 0.5 / z
-    return min(max(cx, hw), 1 - hw), min(max(cy, hw), 1 - hw)
-
-
-WHIP_DIR = {"whip_l": (1.0, 0.0), "whip_r": (-1.0, 0.0), "whip_u": (0.0, 1.0), "whip_d": (0.0, -1.0)}
-WHIP_IN = (0.55, 0.075)     # travel (frame widths) and time constant of the incoming whip
-WHIP_OUT = (0.45, 0.045)    # ... of the outgoing one
-
-
-def whip_terms(shot, tau, u):
-    """Whip-pan displacement (dx, dy) and speed (vx, vy), in frame widths (per second)."""
-    dx = dy = vx = vy = 0.0
-    d = WHIP_DIR.get(shot.tin)
-    if d:
-        k = 1.0 if d[0] else 9.0 / 16.0
-        amt = WHIP_IN[0] * k * math.exp(-tau / WHIP_IN[1])
-        dx += d[0] * amt
-        dy += d[1] * amt
-        vx += abs(d[0]) * amt / WHIP_IN[1]
-        vy += abs(d[1]) * amt / WHIP_IN[1]
-    if shot.next is not None and shot.tout == "whip":
-        d = WHIP_DIR.get(shot.next.tin)
-        if d:
-            k = 1.0 if d[0] else 9.0 / 16.0
-            amt = WHIP_OUT[0] * k * math.exp(-max(u, 0.0) / WHIP_OUT[1])
-            dx -= d[0] * amt
-            dy -= d[1] * amt
-            vx += abs(d[0]) * amt / WHIP_OUT[1]
-            vy += abs(d[1]) * amt / WHIP_OUT[1]
-    return dx, dy, vx, vy
-
-
-def camera_state(shot, j, fps, sub=0.0):
-    """Zoom / centre / rotation / offset of the virtual camera at output frame j+sub."""
-    J = shot.f1 - shot.f0
-    tau = (j + sub) / fps
-    u = (J - (j + sub)) / fps
-    p = min(max((j + sub) / max(J - 1, 1), 0.0), 1.0)
-    if shot.keys:
-        ks = shot.keys
-        a = ks[0]
-        b = ks[-1]
-        for i in range(len(ks) - 1):
-            if ks[i][0] <= p <= ks[i + 1][0]:
-                a, b = ks[i], ks[i + 1]
-                break
-        f = 0.0 if b[0] == a[0] else (p - a[0]) / (b[0] - a[0])
-        e = b[4] if len(b) > 4 else "io"
-        f = {"in": f * f * f, "out": 1 - (1 - f) ** 3, "lin": f}.get(e, ease_io(f))
-        z = math.exp(math.log(a[1]) + (math.log(b[1]) - math.log(a[1])) * f)
-        # move the centre so the target glides to its place while zooming (dolly feel)
-        g = f if b[1] == a[1] else (1.0 / a[1] - 1.0 / z) / (1.0 / a[1] - 1.0 / b[1])
-        cx = a[2] + (b[2] - a[2]) * g
-        cy = a[3] + (b[3] - a[3]) * g
-    else:
-        z = shot.z0 + (shot.z1 - shot.z0) * p
-        cx = shot.c0[0] + (shot.c1[0] - shot.c0[0]) * p
-        cy = shot.c0[1] + (shot.c1[1] - shot.c0[1]) * p
-    rot = shot.rot0 + (shot.rot1 - shot.rot0) * p
-    if shot.accent > 0 and tau > 0.3:
-        ph = ((shot.f0 + j + sub) / fps - BEAT0) % BEAT
-        z *= 1.0 + 0.06 * shot.accent * math.exp(-ph / 0.10)
-    tin = shot.tin
-    if tin == "flash":
-        z *= 1.0 + shot.zp * math.exp(-tau / 0.085)
-    elif tin in WHIP_DIR:
-        z *= 1.0 + 0.5 * shot.zp * math.exp(-tau / 0.085)
-    elif tin.startswith("spin"):
-        ang = 16.0 * math.exp(-tau / 0.085) * (1.0 if tin == "spin_l" else -1.0)
-        rot += ang
-        z *= 1.0 + shot.zp * math.exp(-tau / 0.085) + 0.030 * min(abs(ang), 8.0)
-    if shot.next is not None:
-        nt = shot.next.tin
-        if shot.tout == "zoom" or (shot.tout == "whip" and nt not in WHIP_DIR and not nt.startswith("spin")):
-            z *= 1.0 + shot.zo * math.exp(-max(u, 0) / 0.05)
-        elif shot.tout == "whip" and nt.startswith("spin"):
-            ang = 12.0 * math.exp(-max(u, 0) / 0.045) * (-1.0 if nt == "spin_l" else 1.0)
-            rot += ang
-            z *= 1.0 + shot.zo * math.exp(-max(u, 0) / 0.05) + 0.030 * min(abs(ang), 8.0)
-    dx, dy, _, _ = whip_terms(shot, tau, u)
-    # zoom in just enough that most of the whip travel stays inside the picture
-    z *= 1.0 + 2.0 * min(max(abs(dx), abs(dy) * 16.0 / 9.0), 0.22)
-    return z, cx, cy, rot, dx, dy
-
-
-def render_camera(shot, src, j, fps, W, H, rng):
-    """Warp the linear source frame through the virtual camera with motion blur."""
-    sh, sw = src.shape[:2]
-    J = shot.f1 - shot.f0
-    tau = j / fps
-    shutter = 0.7
-    z_a, cx_a, cy_a, rot_a, dx_a, dy_a = camera_state(shot, j, fps, 0.0)
-    z_b, cx_b, cy_b, rot_b, dx_b, dy_b = camera_state(shot, j, fps, shutter)
-    # zoom / rotation travel during the shutter decides the number of blur samples
-    travel = abs(z_b / z_a - 1.0) * W * 0.5 + abs(math.radians(rot_b - rot_a)) * W * 0.5
-    n = int(min(max(math.ceil(travel / 2.5), 1), 14))
-    ca = shot.ca * math.exp(-tau / 0.11) if shot.tin not in ("cut", "fade") else 0.0
-    ca += 0.0009   # constant, barely visible lens fringe
-    sx = sy = 0.0
-    if shot.shake > 0 and shot.tin not in ("cut", "fade"):
-        a = shot.shake * math.exp(-tau / 0.12) * W
-        sx, sy = (float(v) * a for v in rng.uniform(-1, 1, 2))
-    acc = None
-    interp = cv2.INTER_CUBIC if n <= 2 else cv2.INTER_LINEAR
-    for i in range(n):
-        f = 0.5 if n == 1 else i / (n - 1.0)
-        z = z_a + (z_b - z_a) * f
-        cx = cx_a + (cx_b - cx_a) * f
-        cy = cy_a + (cy_b - cy_a) * f
-        rot = rot_a + (rot_b - rot_a) * f
-        dx = (dx_a + dx_b) * 0.5 * W + sx
-        dy = (dy_a + dy_b) * 0.5 * W + sy
-        cx, cy = clamp_center(z, cx, cy)
-        if ca > 2e-4:
-            chans = []
-            for c, zc in enumerate((z * (1 + ca), z, z * (1 - ca))):
-                m = affine(sw, sh, W, H, zc, cx, cy, rot, dx, dy)
-                chans.append(cv2.warpAffine(src[:, :, c], m, (W, H),
-                                            flags=interp | cv2.WARP_INVERSE_MAP,
-                                            borderMode=cv2.BORDER_REFLECT_101))
-            out = cv2.merge(chans)
-        else:
-            m = affine(sw, sh, W, H, z, cx, cy, rot, dx, dy)
-            out = cv2.warpAffine(src, m, (W, H), flags=interp | cv2.WARP_INVERSE_MAP,
-                                 borderMode=cv2.BORDER_REFLECT_101)
-        if acc is None:
-            acc = out
-        else:
-            acc += out
-    if n > 1:
-        acc *= 1.0 / n
-    # whip pans: long directional streaks (two box passes = triangular shutter)
-    _, _, vx, vy = whip_terms(shot, tau + 0.5 * shutter / fps, (J - j - 0.5 * shutter) / fps)
-    for v, horiz in ((vx, True), (vy, False)):
-        L = int(min(v * W / fps * 1.5, 0.45 * W))
-        if L > 2:
-            k = (L | 1, 1) if horiz else (1, L | 1)
-            acc = cv2.blur(cv2.blur(acc, k), k)
-    np.clip(acc, 0.0, None, out=acc)     # cubic overshoot
-    return acc
-
-
-_bright_cache = {}
-
-
-def shot_brightness(shot):
-    """How bright the shot's first frame already is (cached), used to tame flashes."""
-    key = (shot.path, round(shot.t_in, 3), shot.crop)
-    if key not in _bright_cache:
-        vf = (("crop=" + shot.crop + ",") if shot.crop else "") + "scale=64:36"
-        raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{shot.t_in:.3f}", "-i", shot.path,
-                              "-frames:v", "1", "-vf", vf, "-pix_fmt", "rgb24", "-f", "rawvideo", "-"],
-                             capture_output=True).stdout
-        a = np.frombuffer(raw, np.uint8)
-        if a.size:
-            lum = to_lin(a).reshape(-1, 3).max(axis=1)
-            # a bright body on black (planet, lunar surface) counts as bright, not as "mostly dark"
-            _bright_cache[key] = max(float(lum.mean()), 0.75 * float(np.percentile(lum, 85)))
-        else:
-            _bright_cache[key] = 0.1
-    return _bright_cache[key]
-
-
-def exposure_env(shot, j, fps):
-    """Exposure multiplier and bloom boost from entry flash / exit pre-flash / pulses."""
-    J = shot.f1 - shot.f0
-    tau = j / fps
-    u = (J - j) / fps
-    g = shot.exposure
-    boost = 0.0
-    if shot.tin == "flash" or shot.tin.startswith(("whip", "spin")):
-        fl = shot.flash * min(max(1.2 - 2.6 * shot_brightness(shot), 0.35), 1.0)
-        g *= 1.0 + fl * math.exp(-tau / 0.065)
-        boost += 0.9 * fl * math.exp(-tau / 0.13)
-    elif shot.tin == "fade":
-        g *= ease_io(min((tau + 1.0 / fps) / shot.fade_in, 1.0))
-    if shot.next is not None and shot.tout in ("zoom", "whip"):
-        g *= 1.0 + shot.fo * math.exp(-u / 0.045)
-        boost += 0.8 * shot.fo * math.exp(-u / 0.06)
-    elif shot.tout == "fade":
-        g *= ease_io(min(max(u / 1.1, 0.0), 1.0))
-    t_abs = (shot.f0 + j) / fps - BEAT0
-    if shot.pulse > 0:
-        ph = t_abs % (BEAT / 3.0)
-        g *= 1.0 + shot.pulse * math.exp(-ph / 0.06)
-    if shot.accent > 0 and tau > 0.3:
-        ph = t_abs % BEAT
-        g *= 1.0 + shot.accent * math.exp(-ph / 0.09)
-        boost += 1.5 * shot.accent * math.exp(-ph / 0.2)
-    return g, boost
-
-
-def add_bloom(img, strength, streak, rays, rays_at, state, thresh=0.55):
-    """Additive glow from the highlights (linear light). Returns the modified image."""
+def add_bloom(img, strength, streak, halation, thresh=0.6):
+    """Glow, anamorphic streaks and film halation from the highlights (linear light)."""
     H, W = img.shape[:2]
     qw, qh = W // 4, H // 4
+    s = W / 1920.0
     small = cv2.resize(img, (qw, qh), interpolation=cv2.INTER_AREA)
     bright = np.maximum(small - thresh, 0.0)
-    s = W / 1920.0
-    g1 = cv2.GaussianBlur(bright, (0, 0), 5.0 * s)
+    g1 = cv2.GaussianBlur(bright, (0, 0), 4.0 * s)
     tiny = cv2.resize(bright, (qw // 4, qh // 4), interpolation=cv2.INTER_AREA)
-    g2 = cv2.GaussianBlur(tiny, (0, 0), 6.0 * s)
-    glow = g1 * 0.55 + cv2.resize(g2, (qw, qh), interpolation=cv2.INTER_LINEAR) * 0.75
+    g2 = cv2.GaussianBlur(tiny, (0, 0), 5.0 * s)
+    g3 = cv2.GaussianBlur(tiny, (0, 0), 16.0 * s)
+    glow = g1 * 0.5 + cv2.resize(g2 * 0.6 + g3 * 0.5, (qw, qh), interpolation=cv2.INTER_LINEAR)
+    glow *= strength
+    if halation > 0:
+        hl = cv2.GaussianBlur(np.maximum(small - 0.8, 0.0).max(axis=2), (0, 0), 2.2 * s) * halation
+        glow[..., 0] += hl
+        glow[..., 1] += hl * 0.32
+        glow[..., 2] += hl * 0.08
     if streak > 0:
-        hot = np.maximum(small - 0.82, 0.0)
+        hot = np.maximum(small - 0.85, 0.0)
         lum = small.max(axis=2)
-        area = cv2.GaussianBlur((lum > 0.45).astype(np.float32), (0, 0), qw / 14.0)
-        wgt = np.clip(1.0 - 3.0 * area, 0.0, 1.0)          # big bright bodies do not streak
-        hot *= wgt[:, :, None]
+        area = cv2.GaussianBlur((lum > 0.5).astype(np.float32), (0, 0), qw / 14.0)
+        hot *= np.clip(1.0 - 3.0 * area, 0.0, 1.0)[:, :, None]       # only compact highlights streak
         hot = cv2.GaussianBlur(hot, (0, 0), 1.0 * s)
-        st = (cv2.blur(hot, (int(qw * 0.07) | 1, 1)) * 0.50
-              + cv2.blur(hot, (int(qw * 0.22) | 1, 1)) * 0.32
-              + cv2.blur(hot, (int(qw * 0.60) | 1, 1)) * 0.18)
-        st[:, :, 0] *= 0.55
-        st[:, :, 1] *= 0.80         # cool anamorphic streak
-        glow += st * (9.0 * streak)
-    if rays > 0:
-        if rays_at is None:
-            lum = cv2.GaussianBlur(tiny.max(axis=2), (0, 0), 3.0)
-            _, _, _, loc = cv2.minMaxLoc(lum)
-            lx, ly = (loc[0] + 0.5) / tiny.shape[1], (loc[1] + 0.5) / tiny.shape[0]
-            prev = state.get("rays_at")
-            if prev is not None:
-                lx, ly = prev[0] * 0.85 + lx * 0.15, prev[1] * 0.85 + ly * 0.15
-            state["rays_at"] = (lx, ly)
-        else:
-            lx, ly = rays_at
-        px, py = lx * qw, ly * qh
-        hot = np.maximum(small - 0.80, 0.0)
-        hot = cv2.GaussianBlur(hot, (0, 0), 1.5 * s)
-        acc = np.zeros_like(hot)
-        wsum = 0.0
-        w = 1.0
-        for i in range(1, 41):
-            sc = 1.0 + 0.016 * i
-            m = np.array([[1 / sc, 0, px - px / sc], [0, 1 / sc, py - py / sc]])
-            acc += cv2.warpAffine(hot, m, (qw, qh), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP) * w
-            wsum += w
-            w *= 0.955
-        acc = cv2.GaussianBlur(acc / wsum, (0, 0), 1.0 * s)
-        glow += acc * (9.0 * rays)
+        st = (cv2.blur(hot, (int(qw * 0.07) | 1, 1)) * 0.5 + cv2.blur(hot, (int(qw * 0.22) | 1, 1)) * 0.32
+              + cv2.blur(hot, (int(qw * 0.6) | 1, 1)) * 0.18)
+        st[..., 0] *= 0.5
+        st[..., 1] *= 0.78
+        glow += st * (8.0 * streak)
     glow = cv2.resize(glow, (W, H), interpolation=cv2.INTER_LINEAR)
-    cv2.scaleAdd(glow, float(strength), img, img)
+    cv2.add(img, glow, img)
     return img
 
 
-def finish(img, look, shot, grain_amp=0.011):
+def finish(img, look, f, grade, grain_amp):
     """Linear float image -> graded 8-bit RGB."""
     cv2.multiply(img, look.vig3, img)
-    # soft highlight shoulder
-    _, over = cv2.threshold(img - 0.72, 0.0, 0.0, cv2.THRESH_TOZERO)
-    rolled = 0.72 + 0.28 * (1.0 - cv2.exp(over * (-1.0 / 0.28)))
-    img = cv2.min(img, rolled)
+    _, over = cv2.threshold(img - 0.70, 0.0, 0.0, cv2.THRESH_TOZERO)      # soft highlight shoulder
+    img = cv2.min(img, 0.70 + 0.30 * (1.0 - cv2.exp(over * (-1.0 / 0.30))))
     _, img = cv2.threshold(img, 0.0, 0.0, cv2.THRESH_TOZERO)
-    g = cv2.pow(img, (1.0 / GAMMA) * shot.gamma)
-    sat = 1.10 * shot.sat
+    g = cv2.pow(img, (1.0 / GAMMA) * grade.get("gamma", 1.0))
+    sat = grade.get("sat", 1.0)
     lw = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
-    m = np.eye(3, dtype=np.float32) * sat + (1 - sat) * lw[None, :]
-    g = cv2.transform(g, m)
-    # gentle S-curve + black point
+    if abs(sat - 1.0) > 1e-3:
+        g = cv2.transform(g, np.eye(3, dtype=np.float32) * sat + (1 - sat) * lw[None, :])
     np.clip(g, 0.0, 1.0, out=g)
-    s = g * g * (3.0 - 2.0 * g)
-    g = cv2.addWeighted(g, 0.80, s, 0.20, 0.0)
-    b = 0.012 + shot.black
+    c = grade.get("contrast", 0.22)                                       # filmic S-curve
+    g = cv2.addWeighted(g, 1.0 - c, g * g * (3.0 - 2.0 * g), c, 0.0)
+    b = 0.010 + grade.get("black", 0.0)
     g = (g - b) * (1.0 / (1.0 - b))
+    sh = grade.get("sharpen", 0.0)
+    if sh > 0:
+        g = cv2.addWeighted(g, 1.0 + sh, cv2.GaussianBlur(g, (0, 0), 1.1 * look.W / 1920.0), -sh, 0.0)
     if grain_amp > 0:
-        n = look.grain_field()
+        n = look.grain_field(f)
         lum = cv2.transform(g, lw.reshape(1, 3))
-        wgt = 0.30 + 2.8 * lum * (1.0 - np.minimum(lum, 1.0))
-        n = n * wgt * grain_amp
+        n = n * (0.30 + 2.6 * lum * (1.0 - np.minimum(lum, 1.0))) * grain_amp
         g += cv2.merge([n, n, n])
     return np.clip(g * 255.0 + 0.5, 0, 255).astype(np.uint8)
 
 
-# ------------------------------------------------------------------ title ---
-class Title:
-    """Letter-by-letter title, composited in linear light on top of the glowing picture."""
+# ----------------------------------------------------------------- type -----
+class Type:
+    """Rasterised glyphs of one font (supersampled), drawn with per-letter transforms."""
 
-    def __init__(self, W, H, spec):
-        from PIL import Image, ImageDraw, ImageFont
-        self.W, self.H, self.spec = W, H, spec
-        word = spec["word"]
-        size = int(spec.get("size", 0.118) * W)
-        font = ImageFont.truetype(spec["font"], size)
-        self.ss = 2  # supersample
-        fbig = ImageFont.truetype(spec["font"], size * self.ss)
-        track = spec.get("tracking", 0.62) * size
-        adv = [font.getlength(ch) for ch in word]
-        total = sum(adv) + track * (len(word) - 1)
-        x = (W - total) / 2.0
-        asc, desc = font.getmetrics()
-        bbox = font.getbbox("SPACE")
-        cap_h = bbox[3] - bbox[1]
-        self.cy = H * spec.get("y", 0.5)
-        self.letters = []
-        for ch, a in zip(word, adv):
-            pad = int(size * 0.35)
-            gw, gh = int(a) + 2 * pad, int(cap_h) + 2 * pad
-            im = Image.new("L", (gw * self.ss, gh * self.ss), 0)
-            d = ImageDraw.Draw(im)
-            d.text((pad * self.ss, (pad - bbox[1]) * self.ss), ch, font=fbig, fill=255)
-            mask = np.asarray(im, dtype=np.float32) / 255.0
-            mask = cv2.resize(mask, (gw, gh), interpolation=cv2.INTER_AREA)
-            self.letters.append(dict(mask=mask, cx=x + a / 2.0, w=gw, h=gh))
-            x += a + track
-        self.fps = spec["fps"]
+    def __init__(self, font, size, axes=None):
+        from PIL import ImageFont
+        self.size = size
+        self.ss = 2
+        self.font = ImageFont.truetype(font, max(int(size * self.ss), 2))
+        if axes:
+            vals = []
+            for a in self.font.get_variation_axes():
+                name = a["name"] if isinstance(a["name"], str) else a["name"].decode()
+                key = "wght" if "eight" in name else "wdth" if "idth" in name else "opsz" if "ptical" in name else name
+                vals.append(axes.get(key, a["default"]))
+            self.font.set_variation_by_axes(vals)
+        self._g = {}
+        l, t, r, b = self.font.getbbox("HEX")
+        self.cap_top, self.cap_h = t / self.ss, (b - t) / self.ss
 
-    def layer(self, t):
-        """Coverage and brightness layers (H, W) plus glow gain for time t."""
-        sp = self.spec
-        fps = self.fps
+    def adv(self, ch):
+        return self.font.getlength(ch) / self.ss
 
-        def tq(k):      # same frame the picture cuts on
-            return math.floor(bt(k) * fps + 0.35) / fps
+    def glyph(self, ch):
+        if ch not in self._g:
+            from PIL import Image, ImageDraw
+            pad = int(self.size * self.ss * 0.3)
+            w = max(int(self.font.getlength(ch)) + 2 * pad, 2)
+            h = max(int(self.cap_h * self.ss * 1.5) + 2 * pad, 2)
+            im = Image.new("L", (w, h), 0)
+            ImageDraw.Draw(im).text((pad, pad - int(self.cap_top * self.ss)), ch, font=self.font, fill=255)
+            m = cv2.resize(np.asarray(im, np.float32) / 255.0, (max(w // self.ss, 1), max(h // self.ss, 1)),
+                           interpolation=cv2.INTER_AREA)
+            self._g[ch] = (m, pad / self.ss, pad / self.ss)
+        return self._g[ch]
 
-        t = t + 0.25 / fps
-        t_on = [tq(k) for k in sp["beats"]]
-        t_full, t_exit, t_end = tq(sp["full"]), tq(sp["exit"]), tq(sp["end"])
-        if t < t_on[0] or t >= t_end:
-            return None, None, 0.0
-        W, H = self.W, self.H
-        alpha = np.zeros((H, W), np.float32)
-        light = np.zeros((H, W), np.float32)
-        # slow push over the whole title, then the word collapses into a point
-        gp = (t - t_on[0]) / (t_exit - t_on[0])
-        gscale = 1.0 + 0.05 * min(max(gp, 0.0), 1.0)
-        ax, ay = W / 2.0, self.cy
-        opacity = 1.0
-        if t >= t_exit:
-            e = min(max((t - t_exit) / (t_end - t_exit), 0.0), 1.0)
-            tx, ty = sp.get("exit_to", (0.5, 0.5))
-            gscale *= 1.0 - 0.985 * e ** 3
-            mv = ease_io(e)
-            ax += (tx * W - ax) * mv
-            ay += (ty * H - ay) * mv
-            opacity = 1.0 - e ** 6
-        base = sp.get("level", 0.60)
-        glow = 0.0
-        for L, ton in zip(self.letters, t_on):
-            if t < ton:
-                continue
-            a = t - ton
-            pop = 1.0 + 0.50 * math.exp(-a / 0.07)                 # scale pop-in
-            fade = 1.0
-            glow = max(glow, 1.8 * math.exp(-a / 0.18))
-            lvl = base + 0.9 * math.exp(-a / 0.22)                 # newest letter burns brightest
-            if t >= t_full:
-                lvl = max(lvl, base + 0.25 + 0.8 * math.exp(-(t - t_full) / 0.30))
-                pop *= 1.0 + 0.07 * math.exp(-(t - t_full) / 0.10)
-            sc = gscale * pop
-            cx = ax + (L["cx"] - W / 2.0) * gscale
-            m = np.array([[sc, 0, cx - sc * L["w"] / 2.0], [0, sc, ay - sc * L["h"] / 2.0]])
-            a_l = cv2.warpAffine(L["mask"], m, (W, H), flags=cv2.INTER_LINEAR) * fade
-            alpha = cv2.max(alpha, a_l)
-            light = cv2.max(light, a_l * lvl)
-        if t >= t_full:
-            glow = max(glow, 1.7 * math.exp(-(t - t_full) / 0.22)) + 0.25
-            # one specular sweep across the finished word
-            q = (t - t_full) / 0.55
-            if 0.0 <= q <= 1.0:
-                xs = np.arange(W, dtype=np.float32)[None, :] + 0.35 * (np.arange(H, dtype=np.float32)[:, None] - ay)
-                x0 = W * (0.12 + 0.76 * q)
-                band = np.exp(-((xs - x0) / (0.035 * W)) ** 2)
-                light += alpha * band * 1.2
-        return alpha * opacity, light * opacity, glow * opacity
+    def layout(self, text, tracking=0.0):
+        """x offsets (left of each advance box) and total width at scale 1."""
+        xs, x = [], 0.0
+        for ch in text:
+            xs.append(x)
+            x += self.adv(ch) + tracking * self.size
+        return xs, x - tracking * self.size
 
-    def composite(self, img, t):
-        alpha, light, glow = self.layer(t)
-        if alpha is None:
-            return img
-        s = self.W / 1920.0
-        col = self.spec.get("color", (0.90, 0.95, 1.0))
-        # soft shadow keeps the letters readable over bright footage
-        sh = cv2.GaussianBlur(alpha, (0, 0), 16 * s)
-        keep = 1.0 - cv2.max(alpha, 0.58 * sh)
-        halo = cv2.GaussianBlur(light, (0, 0), 24 * s) * (0.10 + 0.40 * glow) \
-            + cv2.GaussianBlur(light, (0, 0), 5 * s) * (0.22 * glow)
-        add = light + halo
-        ch = cv2.split(img)
-        out = [c * keep + add * k for c, k in zip(ch, col)]
-        return cv2.merge(out)
-
-
-# -------------------------------------------------------------- signature ---
-class Signature:
-    """The channel name, struck on one beat and blown away by the next.
-
-    A horizontal light streak snaps across the dark frame and unzips the word from
-    its centre; a thin shock ring runs outwards and refracts the stars behind it;
-    the letters breathe with the spoken tag, charge up and rush the camera into
-    the drop.  Everything is drawn in linear light on top of the picture.
-    """
-
-    def __init__(self, W, H, spec, fps):
-        from PIL import Image, ImageDraw, ImageFont
-        self.W, self.H, self.spec, self.fps = W, H, spec, fps
-        size = int(spec.get("size", 0.092) * W)
-        ss = 2
-        font = ImageFont.truetype(spec["font"], size * ss)
-        text = spec["text"]
-        track = spec.get("tracking", 0.0) * size * ss
-        adv = [font.getlength(c) for c in text]
-        l, t, r, b = font.getbbox(text)
-        pad = int(size * ss * 0.5)
-        tw = int(sum(adv) + track * (len(text) - 1)) + 2 * pad
-        th = int(b - t) + 2 * pad
-        im = Image.new("L", (tw, th), 0)
-        d = ImageDraw.Draw(im)
-        x = float(pad)
-        for c, a in zip(text, adv):
-            d.text((x, pad - t), c, font=font, fill=255)
-            x += a + track
-        m = np.asarray(im, dtype=np.float32) / 255.0
-        self.mask = cv2.resize(m, (tw // ss, th // ss), interpolation=cv2.INTER_AREA)
-        self.mh, self.mw = self.mask.shape
-        self.text_w = (sum(adv) + track * (len(text) - 1)) / ss
-        self.text_h = (b - t) / ss
-        self.cx, self.cy = W * spec.get("x", 0.5), H * spec.get("y", 0.5)
-        yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-        self.dx, self.dy = xx - self.cx, yy - self.cy
-        self.r = np.sqrt(self.dx * self.dx + self.dy * self.dy)
-        self.xx, self.yy = xx, yy
-        self.env = None
-        p = spec.get("env_json")
-        if p and os.path.exists(p):
-            import json
-            j = json.load(open(p))
-            e = np.asarray(j["env"], np.float32)
-            self.env = np.interp(np.arange(int(DURATION * fps)) / fps, np.arange(len(e)) / j["fps"], e)
-        self.rng = np.random.default_rng(99)
-
-    def times(self):
-        fps = self.fps
-
-        def tq(k):
-            return math.floor(bt(k) * fps + 0.35) / fps
-        return tq(self.spec["beat"]), tq(self.spec["end"])
-
-    def _text(self, scale, ox=0.0, oy=0.0):
-        m = np.array([[scale, 0, self.cx + ox - scale * self.mw / 2.0],
-                      [0, scale, self.cy + oy - scale * self.mh / 2.0]])
-        return cv2.warpAffine(self.mask, m, (self.W, self.H), flags=cv2.INTER_LINEAR)
-
-    def composite(self, img, t):
-        t0, t1 = self.times()
-        t = t + 0.25 / self.fps
-        if t < t0 or t >= t1:
-            return img
-        W, H = self.W, self.H
-        s = W / 1920.0
-        tau, u, T = t - t0, t1 - t, t1 - t0
-        f = int(round(t * self.fps))
-        voice = float(self.env[f]) if self.env is not None and f < len(self.env) else 0.0
-        surge = min(max((0.15 - u) / 0.15, 0.0), 1.0) ** 2          # charge-up into the drop
-        eighth = math.exp(-((t - BEAT0) % (BEAT / 3.0)) / 0.07)
-
-        # --- shock ring: refract what is behind it, then add its light --------------
-        rr = W * (0.02 + 0.80 * (1.0 - math.exp(-tau / 0.24)))
-        rw = W * (0.006 + 0.030 * tau)
-        ring_gain = math.exp(-tau / 0.21)
-        if ring_gain > 0.02:
-            prof = np.exp(-((self.r - rr) / (1.8 * rw)) ** 2)
-            push = (0.016 * W * ring_gain) * prof / np.maximum(self.r, 1.0)
-            img = cv2.remap(img, self.xx - self.dx * push, self.yy - self.dy * push, cv2.INTER_LINEAR,
-                            borderMode=cv2.BORDER_REFLECT_101)
-        # --- the word ---------------------------------------------------------------
-        scale = (1.0 + 0.30 * math.exp(-tau / 0.05)) * (1.0 + 0.045 * tau / T) * (1.0 + 0.55 * surge ** 1.5)
-        jx, jy = (self.rng.uniform(-1, 1, 2) * (0.004 * W * surge + 0.006 * W * math.exp(-tau / 0.05)))
-        ca = 0.016 * math.exp(-tau / 0.10) + 0.014 * surge + 0.0015
-        n_blur = 1 + int(round(6 * surge))
-        chans = []
-        for k in (1.0 + ca, 1.0, 1.0 - ca):
-            acc = None
-            for i in range(n_blur):
-                zz = scale * k * (1.0 + 0.10 * surge * i / max(n_blur - 1, 1))
-                a = self._text(zz, jx, jy)
-                acc = a if acc is None else acc + a
-            chans.append(acc / n_blur)
-        # unzip from the centre along the streak
-        reach = (self.text_w * 0.5 * scale + 0.03 * W) * min(tau / 0.075, 1.0) ** 0.6 + 2.0
-        wipe = np.clip((reach - np.abs(self.dx)) / (0.012 * W) + 0.5, 0.0, 1.0)
-        # brighter at the cap line than at the baseline: a faint metallic falloff
-        grad = np.clip(0.90 - 0.26 * self.dy / max(self.text_h * scale, 1.0), 0.6, 1.25)
-        level = 0.70 + 1.5 * math.exp(-tau / 0.15) + 0.10 * eighth + 0.55 * voice + 1.6 * surge
-        glow = 0.30 + 1.5 * math.exp(-tau / 0.20) + 0.25 * eighth + 0.9 * voice + 1.6 * surge
-        sweep = 0.0
-        q = (tau - 0.30) / 0.42
-        if 0.0 <= q <= 1.0:
-            x0 = self.cx - self.text_w * 0.62 + self.text_w * 1.24 * q
-            sweep = np.exp(-(((self.xx + 0.4 * self.dy) - x0) / (0.030 * W)) ** 2) * 1.5
-        col = self.spec.get("color", (0.93, 0.96, 1.0))
-        alpha = chans[1] * wipe
-        lights = [c * wipe * (level * grad + sweep) for c in chans]
-        halo = cv2.GaussianBlur(lights[1], (0, 0), 26 * s) * (0.55 * glow) \
-            + cv2.GaussianBlur(lights[1], (0, 0), 6 * s) * (0.30 * glow)
-        # --- light: a soft flare bursts through the word, a fine line stays under it --
-        burst = 2.4 * math.exp(-tau / 0.09)
-        blen = W * (0.08 + 0.50 * (1.0 - math.exp(-tau / 0.035)))
-        flare = np.exp(-(self.dy / (0.010 * W)) ** 2) * (1.0 / (1.0 + (self.dx / blen) ** 2)) * (0.9 * burst) \
-            + np.exp(-(self.r / (0.022 * W)) ** 2) * (2.2 * math.exp(-tau / 0.06))
-        line_y = self.dy - (0.5 + 0.30) * self.text_h * scale
-        reach_l = (self.text_w * 0.62 * scale) * min(tau / 0.09, 1.0) ** 0.6 + 2.0
-        amp = 0.55 + 1.6 * math.exp(-tau / 0.12) + 0.12 * eighth + 0.45 * voice + 1.5 * surge
-        line = np.exp(-(line_y / (0.0014 * W)) ** 2) * np.exp(-(self.dx / reach_l) ** 4) * amp \
-            + np.exp(-(line_y / (0.008 * W)) ** 2) * np.exp(-(self.dx / (0.8 * reach_l)) ** 2) * (0.16 * amp)
-        streak = flare + line
-        ring = 0.0
-        if ring_gain > 0.02:
-            ring = 0.75 * ring_gain
-        keep = 1.0 - alpha
-        out = []
-        for i, (c, light, k) in enumerate(zip(cv2.split(img), lights, col)):
-            add = light * k + halo * (0.80, 0.90, 1.0)[i] + streak * (0.62, 0.80, 1.0)[i]
-            if ring_gain > 0.02:
-                off = (0.004, 0.0, -0.004)[i] * W          # red runs ahead, blue trails
-                add = add + ring * np.exp(-((self.r - rr - off) / rw) ** 2) * (0.75, 0.88, 1.0)[i]
-            out.append(c * keep + add)
-        return cv2.merge(out)
-
-
-# ----------------------------------------------------------------- render ---
-class Renderer:
-    def __init__(self, edit, W, H, fps, grain=0.011):
-        self.W, self.H, self.fps = W, H, fps
-        self.shots = edit.SHOTS
-        self.total = layout(self.shots, fps)
-        self.look = Look(W, H)
-        self.grain = grain
-        spec = dict(edit.TITLE)
-        spec["fps"] = fps
-        self.title = Title(W, H, spec)
-        sig = getattr(edit, "SIGNATURE", None)
-        self.signature = Signature(W, H, sig, fps) if sig else None
-        self.credit = getattr(edit, "CREDIT", None)
-        self.fade_out = getattr(edit, "FADE_OUT", 1.1)
-        self._credit_layer = None
-
-    def decode_size(self, shot):
-        sw, sh, sfps, dur = probe(shot.path)
-        if shot.crop:
-            cw, ch = (int(v) for v in shot.crop.split(":")[:2])
-            sw, sh = cw, ch
-        zmax = max([shot.z0, shot.z1] + [k[1] for k in (shot.keys or [])]) * (1 + shot.zp) * 1.02
-        w = int(min(sw, math.ceil(self.W * min(zmax, 1.6) / 16) * 16))
-        w = max(w, min(sw, self.W))
-        h = int(round(w * 9 / 16 / 2) * 2)
-        return w, h
-
-    def credit_layer(self):
-        """End card: one or more centred lines of spaced small caps, drawn once."""
-        if self._credit_layer is None and self.credit:
-            from PIL import Image, ImageDraw, ImageFont
-            W, H = self.W, self.H
-            layer = np.zeros((H, W), np.float32)
-            for ln in self.credit["lines"]:
-                im = Image.new("L", (W * 2, H * 2), 0)
-                d = ImageDraw.Draw(im)
-                f = ImageFont.truetype(ln["font"], int(ln["size"] * W * 2))
-                txt = ln["text"]
-                sp = ln.get("tracking", 0.22) * f.size
-                wtot = sum(f.getlength(c) for c in txt) + sp * (len(txt) - 1)
-                x = (W * 2 - wtot) / 2
-                for c in txt:
-                    d.text((x, H * 2 * ln["y"]), c, font=f, fill=255)
-                    x += f.getlength(c) + sp
-                a = cv2.resize(np.asarray(im, np.float32) / 255.0, (W, H), interpolation=cv2.INTER_AREA)
-                layer += a * ln.get("level", 0.5)
-            self._credit_layer = layer
-        return self._credit_layer
-
-    def frames(self, f_from, f_to, on_frame):
-        rng = np.random.default_rng(1234 + f_from)
-        for shot in self.shots:
-            if shot.f1 <= f_from or shot.f0 >= f_to:
-                continue
-            dw, dh = self.decode_size(shot)
-            pos = step_positions(shot, self.fps)
-            rd = Reader(shot.path, shot.t_in, dw, dh, crop=shot.crop, hflip=shot.hflip, vflip=shot.vflip)
-            state = {}
-            try:
-                for j in range(shot.f1 - shot.f0):
-                    f = shot.f0 + j
-                    if f >= f_to:
-                        break
-                    if f < f_from:
-                        continue
-                    if pos[j + 1] - pos[j] < 0.999:
-                        i0 = int(math.floor(pos[j] + 1e-6))
-                        src = rd.blend(i0, pos[j] - i0)
-                    else:
-                        src = rd.window(pos[j], pos[j + 1])
-                    on_frame(f, self.compose(shot, j, src, rng, state))
-            finally:
-                rd.close()
-
-    def compose(self, shot, j, src, rng, state):
-        fps, W, H = self.fps, self.W, self.H
-        t = (shot.f0 + j) / fps
-        img = render_camera(shot, src, j, fps, W, H, rng)
-        gain, boost = exposure_env(shot, j, fps)
+    def draw(self, canvas, ch, x, y, scale=1.0, gain=1.0, about=None):
+        """Max-composite glyph `ch`, advance-box origin at (x, y = cap top), scaled about `about`."""
+        m, ox, oy = self.glyph(ch)
+        H, W = canvas.shape[:2]
+        if about is None:
+            about = (x + self.adv(ch) / 2.0, y + self.cap_h / 2.0)
+        tx = about[0] + scale * (x - ox - about[0])
+        ty = about[1] + scale * (y - oy - about[1])
+        M = np.array([[scale, 0, tx], [0, scale, ty]], dtype=np.float64)
+        layer = cv2.warpAffine(m, M, (W, H), flags=cv2.INTER_LINEAR)
         if gain != 1.0:
-            img *= gain
-        if shot.tone:
-            img = cv2.merge([c if p == 1.0 else cv2.pow(c, p) for c, p in zip(cv2.split(img), shot.tone)])
-        img = add_bloom(img, shot.bloom * (1.0 + boost), shot.streak, shot.rays, shot.rays_at, state)
-        img = self.title.composite(img, t)
-        if self.signature is not None:
-            img = self.signature.composite(img, t)
-        if self.credit:
-            c0, c1 = self.credit["t0"], self.credit["t1"]
-            if c0 <= t <= c1:
-                a = self.credit_layer() * ease_io(min((t - c0) / 0.6, 1.0))
-                img += cv2.merge([a * 0.9, a * 0.95, a])
-        out = finish(img, self.look, shot, self.grain)
-        # fade to black at the very end (after the grade, so the grain fades too)
-        fo = self.fade_out
-        if t > DURATION - fo:
-            k = ease_io(min(max((DURATION - t - 1.0 / fps) / fo, 0.0), 1.0))
-            out = (out.astype(np.float32) * k + 0.5).astype(np.uint8)
+            layer *= gain
+        np.maximum(canvas, layer, out=canvas)
+        return canvas
+
+
+# ------------------------------------------------------------- renderer -----
+class Renderer:
+    def __init__(self, edit, W, H, fps, grain=0.009):
+        self.edit, self.W, self.H, self.fps, self.grain = edit, W, H, fps, grain
+        self.clips = edit.CLIPS
+        self.total = layout(self.clips, fps)
+        self.look = Look(W, H)
+        self.src = {}
+        self.pos = {}
+        self.grade = dict(getattr(edit, "GRADE", {}))
+        self.shutter = 0.7
+        self.kick = np.zeros(self.total + 2, np.float32)
+        self.snare = np.zeros(self.total + 2, np.float32)
+        for k, kind, s in getattr(edit, "HITS", []):          # (beat, 'k' | 's', strength)
+            f0 = bf(k, fps)
+            tau = (0.11 if kind == "k" else 0.075) * fps
+            arr = self.kick if kind == "k" else self.snare
+            for f in range(max(f0, 0), min(f0 + int(6 * tau), self.total)):
+                arr[f] = max(arr[f], s * math.exp(-(f - f0) / tau))
+        self._rgrid = {}
+        self.overlays = edit.overlays(self) if hasattr(edit, "overlays") else []
+
+    def grid_r(self, at):
+        key = (round(at[0], 4), round(at[1], 4))
+        if key not in self._rgrid:
+            if len(self._rgrid) > 6:
+                self._rgrid.clear()
+            self._rgrid[key] = np.hypot(self.look.xx - at[0] * self.W, self.look.yy - at[1] * self.H)
+        return self._rgrid[key]
+
+    # ---- sources
+    def lead_tail(self, c):
+        lead = tail = 2
+        if c.tin is not None and c.tin.mix:
+            lead = max(lead, int(math.ceil(c.tin.mix[1] * self.fps)) + 2)
+        if c.next is not None and c.next.tin is not None and c.next.tin.mix:
+            tail = max(tail, int(math.ceil(c.next.tin.mix[2] * self.fps)) + 2)
+        return lead, tail
+
+    def decode_size(self, c):
+        sw, sh, sfps, dur = probe(c.path)
+        if c.crop:
+            sw, sh = (int(v) for v in c.crop.split(":")[:2])
+        zmax = max(k[1] for k in c.keys) * 1.12
+        w = int(min(sw, math.ceil(self.W * min(zmax, 1.7) / 16) * 16))
+        w = max(w, min(sw, self.W))
+        return w, int(round(w * sh / sw / 2) * 2)
+
+    def source(self, c, f):
+        """Opened lazily at the first frame a worker needs (so chunks can start anywhere)."""
+        if c.index not in self.src:
+            if c.kind == "still":
+                self.src[c.index] = still(c.path)
+            else:
+                lead, tail = self.lead_tail(c)
+                pos, rate = positions(c, self.fps, lead, tail)
+                j = int(clamp(f - c.f0 + lead, 0, len(pos) - 1))
+                sfps = probe(c.path)[2]
+                first = math.floor(max(pos[j] - 2.0, -c.t_in * sfps))     # first source frame this reader decodes
+                w, h = self.decode_size(c)
+                self.src[c.index] = VideoSource(c.path, c.t_in + first / sfps, w, h, crop=c.crop, flip=c.flip)
+                self.pos[c.index] = (pos, rate, lead, first)
+        return self.src[c.index]
+
+    def release(self, f):
+        for i in [i for i in self.src if self.clips[i].f1 + self.lead_tail(self.clips[i])[1] + 2 < f]:
+            s = self.src.pop(i)
+            if isinstance(s, VideoSource):
+                s.close()
+            self.pos.pop(i, None)
+
+    # ---- camera
+    def state(self, c, tf):
+        fps = self.fps
+        n = max(c.f1 - c.f0, 1)
+        tau, u = (tf - c.f0) / fps, (c.f1 - tf) / fps
+        z, cx, cy, rot = c.cam((tf - c.f0) / n)
+        m = dict(IDENT)
+        if c.tin is not None and c.tin.post > 0 and tau < c.tin.post:
+            m = merge(m, c.tin.inc(max(tau, 0.0) / c.tin.post))
+        nx = c.next
+        if nx is not None and nx.tin is not None and nx.tin.pre > 0 and u < nx.tin.pre:
+            m = merge(m, nx.tin.out(1.0 - max(u, 0.0) / nx.tin.pre))
+        fi = int(clamp(math.floor(tf), 0, self.total))
+        K, S = float(self.kick[fi]) * c.kick, float(self.snare[fi]) * c.snare
+        m["z"] *= 1.0 + 0.045 * K + 0.02 * S
+        m["dx"] += 0.0045 * S * frand(fi, 1)
+        m["dy"] += 0.0045 * S * frand(fi, 2)
+        m["rot"] += 0.35 * S * frand(fi, 3)
+        m["gain"] *= 1.0 + 0.10 * K + 0.07 * S
+        m["glow"] += 0.35 * K + 0.25 * S
+        m["rgb"] += 0.0022 * S
+        return z, cx, cy, rot, m
+
+    def matrix(self, sw, sh, z, cx, cy, rot, m):
+        """3x3 map from output pixels to source pixels."""
+        W, H = self.W, self.H
+        b = min(sw / float(W), sh / float(H))
+        hw, hh = 0.5 * W * b / z / sw, 0.5 * H * b / z / sh       # keep the base view inside the picture
+        cx = clamp(cx, hw, 1 - hw) if hw < 0.5 else 0.5
+        cy = clamp(cy, hh, 1 - hh) if hh < 0.5 else 0.5
+        th = math.radians(rot)
+        s = b / z
+        base = np.array([[math.cos(th) * s, -math.sin(th) * s, 0.0], [math.sin(th) * s, math.cos(th) * s, 0.0], [0, 0, 1.0]])
+        base[:2, 2] = [cx * sw - base[0, 0] * W / 2 - base[0, 1] * H / 2, cy * sh - base[1, 0] * W / 2 - base[1, 1] * H / 2]
+        ax, ay = m["ax"] * W, m["ay"] * H
+        tt = math.radians(-m["rot"])
+        k = 1.0 / m["z"]
+        tr = np.array([[math.cos(tt) * k, -math.sin(tt) * k, 0.0], [math.sin(tt) * k, math.cos(tt) * k, 0.0], [0, 0, 1.0]])
+        ox, oy = ax + m["dx"] * W, ay + m["dy"] * W
+        tr[:2, 2] = [ax - tr[0, 0] * ox - tr[0, 1] * oy, ay - tr[1, 0] * ox - tr[1, 1] * oy]
+        return base @ tr
+
+    def layer(self, c, f):
+        """One clip at output frame f: warped through the camera, motion-blurred, exposed."""
+        W, H = self.W, self.H
+        src = self.source(c, f)
+        edge = cv2.BORDER_CONSTANT if c.border == "black" else cv2.BORDER_REFLECT_101
+        za, cxa, cya, ra, ma = self.state(c, f)
+        zb, cxb, cyb, rb, mb = self.state(c, f + self.shutter)
+        zm, cxm, cym, rm, mm = self.state(c, f + self.shutter / 2)
+        if c.kind == "still":
+            M = self.matrix(src.w, src.h, zm, cxm, cym, rm, mm)
+            scale = math.sqrt(abs(M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0]))       # source px per output px
+            L = int(clamp(math.floor(math.log2(max(scale, 1e-6))), 0, 6))
+            lev = src.level(L)
+            k = 1.0 / (1 << L)
+            ML = M[:2].copy() * k
+            ML[:, 2] += 0.5 * k - 0.5
+            img = to_lin(cv2.warpAffine(lev, ML, (W, H), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP, borderMode=edge))
+        else:
+            pos, rate, lead, first = self.pos[c.index]
+            j = int(clamp(f - c.f0 + lead, 0, len(pos) - 2))
+            frame = src.sample(pos[j] - first, rate[j], flow=c.flow, shutter=self.shutter)
+            sh, sw = frame.shape[:2]
+            M = self.matrix(sw, sh, zm, cxm, cym, rm, mm)
+            img = cv2.warpAffine(frame, M[:2], (W, H), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP, borderMode=edge)
+            np.maximum(img, 0.0, out=img)
+        # motion blur from the camera's velocity over the shutter
+        anchor = (mm["ax"] * W + mm["dx"] * W, mm["ay"] * H + mm["dy"] * W)
+        lr = abs(math.log((zb * mb["z"]) / (za * ma["z"])))
+        if mm["z"] < 0.995:                    # shrunk by a transition: its mirrored surround must never read as picture
+            lr = max(1.5 * lr, -0.75 * math.log(mm["z"]))
+        if lr > 0.0015:
+            img = blur_zoom(img, anchor, math.exp(lr))
+        dr = (rb + mb["rot"]) - (ra + ma["rot"])
+        if abs(dr) > 0.08:
+            img = blur_spin(img, anchor, dr)
+        bx, by = abs(mb["dx"] - ma["dx"]) * W * 1.5, abs(mb["dy"] - ma["dy"]) * W * 1.5
+        bx = max(bx, 0.85 * (abs(mm["dx"]) - 0.012) * W)       # same for a shot that is still sliding in
+        by = max(by, 0.85 * (abs(mm["dy"]) - 0.012) * W)
+        if bx > 3:
+            img = blur_dir(img, bx, True)
+        if by > 3:
+            img = blur_dir(img, by, False)
+        if mm["ca"] > 4e-4 or mm["rgb"] > 4e-4:
+            ch = list(cv2.split(img))
+            if mm["ca"] > 4e-4:                       # lateral chromatic aberration (red out, blue in)
+                for i, sgn in ((0, 1.0), (2, -1.0)):
+                    s = 1.0 + sgn * mm["ca"]
+                    mat = np.array([[s, 0, W / 2 * (1 - s)], [0, s, H / 2 * (1 - s)]], dtype=np.float64)
+                    ch[i] = cv2.warpAffine(ch[i], mat, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+            d = int(round(mm["rgb"] * W))
+            if d:                                     # channel split on snare hits
+                ch[0] = np.roll(ch[0], d, axis=1)
+                ch[2] = np.roll(ch[2], -d, axis=1)
+            img = cv2.merge(ch)
+        g = c.exposure * mm["gain"]
+        if g != 1.0:
+            img *= g
+        if c.tone:
+            img = cv2.merge([x if p == 1.0 else cv2.pow(x, p) for x, p in zip(cv2.split(img), c.tone)])
+        return img, mm
+
+    def clip_at(self, f):
+        for c in self.clips:
+            if c.f0 <= f < c.f1:
+                return c
+        return self.clips[-1]
+
+    def frame(self, f):
+        fps = self.fps
+        c = self.clip_at(f)
+        self.release(f)
+        img, m = self.layer(c, f)
+        ctx = dict(grid_r=self.grid_r, glow=m["glow"], clip=c, mods=m, f=f, t=f / fps)
+        tr = c.tin
+        if tr is not None and tr.mix and c.prev is not None and f < c.f0 + int(round(tr.mix[2] * fps)):
+            a, b = int(round(tr.mix[1] * fps)), int(round(tr.mix[2] * fps))
+            other, _ = self.layer(c.prev, f)
+            img = tr.blend(other, img, (f - (c.f0 - a) + 0.5) / max(a + b, 1), ctx)
+        nx = c.next
+        if nx is not None and nx.tin is not None and nx.tin.mix and f >= nx.f0 - int(round(nx.tin.mix[1] * fps)):
+            a, b = int(round(nx.tin.mix[1] * fps)), int(round(nx.tin.mix[2] * fps))
+            other, _ = self.layer(nx, f)
+            img = nx.tin.blend(img, other, (f - (nx.f0 - a) + 0.5) / max(a + b, 1), ctx)
+        for o in self.overlays:                       # depth-composited elements, in front of the lens effects
+            if o.stage == "scene":
+                img = o.apply(img, f, ctx)
+        img = add_bloom(img, c.bloom * (1.0 + ctx["glow"]), c.streak, self.grade.get("halation", 0.0))
+        for o in self.overlays:
+            if o.stage == "lens":
+                img = o.apply(img, f, ctx)
+        grade = dict(self.grade)
+        grade["sat"] = grade.get("sat", 1.0) * c.sat
+        grade["gamma"] = grade.get("gamma", 1.0) * c.gamma
+        grade["black"] = grade.get("black", 0.0) + c.black
+        if c.sharpen is not None:
+            grade["sharpen"] = c.sharpen
+        out = finish(img, self.look, f, grade, self.grain)
+        for o in self.overlays:
+            if o.stage == "final":
+                out = o.apply(out, f, ctx)
         return out
 
+    def frames(self, f_from, f_to, on_frame):
+        try:
+            for f in range(f_from, min(f_to, self.total)):
+                on_frame(f, self.frame(f))
+        finally:
+            for s in self.src.values():
+                if isinstance(s, VideoSource):
+                    s.close()
+            self.src.clear()
+            self.pos.clear()
 
-def validate(shots, fps):
-    """Warn when a shot would run past the end of its source clip."""
-    ok = True
-    for sh in shots:
-        w, h, sfps, dur = probe(sh.path)
-        used = step_positions(sh, fps)[-1] / sfps
-        if sh.t_in + used > dur - 0.15:
-            print(f"WARNING {sh.id}: needs source until {sh.t_in + used:.2f}s but clip is {dur:.2f}s", file=sys.stderr)
-            ok = False
-    return ok
+
+# ------------------------------------------------------------------ cli -----
+def load_edit(path=None):
+    import importlib.util
+    path = path or os.path.join(HERE, "edit.py")
+    spec = importlib.util.spec_from_file_location("edit", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def x264_cmd(out, W, H, fps, crf, preset):
-    return ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
-            "-s", f"{W}x{H}", "-r", str(fps), "-i", "-",
-            "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
-            "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
-            "-profile:v", "high", "-g", str(fps), "-bf", "2",
-            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
-            "-color_range", "tv", "-movflags", "+faststart", out]
+    return ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(fps), "-i", "-",
+            "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p", "-c:v", "libx264", "-preset", preset,
+            "-crf", str(crf), "-profile:v", "high", "-g", str(fps), "-bf", "2", "-colorspace", "bt709",
+            "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv", "-movflags", "+faststart", out]
 
 
-def render_range(edit, W, H, fps, f_from, f_to, out, crf=16, preset="medium", grain=0.011):
-    if isinstance(edit, str):
-        edit = load_edit(edit)
-    r = Renderer(edit, W, H, fps, grain)
-    f_to = min(f_to, r.total)
+def render_range(edit_path, W, H, fps, f_from, f_to, out, crf, preset, grain):
+    cv2.setNumThreads(2)
+    r = Renderer(load_edit(edit_path), W, H, fps, grain)
     tmp = out + ".tmp.mp4"
     enc = subprocess.Popen(x264_cmd(tmp, W, H, fps, crf, preset), stdin=subprocess.PIPE)
 
@@ -938,8 +981,7 @@ def render_range(edit, W, H, fps, f_from, f_to, out, crf=16, preset="medium", gr
         try:
             enc.stdin.write(img.tobytes())
         except BrokenPipeError:
-            raise RuntimeError(f"the encoder for frames {f_from}-{f_to} died at frame {f} "
-                               "(usually out of memory: run again with --resume and fewer --jobs)") from None
+            raise RuntimeError(f"the encoder for frames {f_from}-{f_to} died at frame {f} (out of memory?)") from None
 
     r.frames(f_from, f_to, put)
     enc.stdin.close()
@@ -950,54 +992,34 @@ def render_range(edit, W, H, fps, f_from, f_to, out, crf=16, preset="medium", gr
 
 
 def count_frames(path):
-    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                          "stream=nb_frames", "-of", "csv=p=0", path], capture_output=True, text=True).stdout
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=nb_frames",
+                          "-of", "csv=p=0", path], capture_output=True, text=True).stdout
     try:
         return int(out.strip().split(",")[0])
     except ValueError:
         return -1
 
 
-def load_edit(path=None):
-    import importlib.util
-    path = path or os.path.join(HERE, "edit.py")
-    spec = importlib.util.spec_from_file_location("edit", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 def cmd_render(a):
     import concurrent.futures as cf
-    edit = load_edit(a.edit)
+    path = a.edit or os.path.join(HERE, "edit.py")
+    edit = load_edit(path)
     W, H, fps = a.width, a.width * 9 // 16, a.fps
-    shots = edit.SHOTS
-    total = layout(shots, fps)
-    validate(shots, fps)
+    total = layout(edit.CLIPS, fps)
     f_from = int(round(a.t0 * fps)) if a.t0 else 0
     f_to = int(round(a.t1 * fps)) if a.t1 else total
-    # split on shot boundaries into balanced chunks; --jobs of them render at a time
-    n_parts = a.parts or a.jobs
-    bounds = sorted({f_from, f_to} | {s.f0 for s in shots if f_from < s.f0 < f_to})
-    target = (f_to - f_from) / float(n_parts)
-    cuts = [f_from]
-    for b in bounds[1:-1]:
-        if b - cuts[-1] >= target * 0.9 and len(cuts) < n_parts:
-            cuts.append(b)
-    cuts.append(f_to)
+    n_parts = a.parts or max(a.jobs, int(math.ceil((f_to - f_from) / (fps * 4.0))))
+    cuts = [f_from + int(round((f_to - f_from) * i / n_parts)) for i in range(n_parts + 1)]
     tmp = a.out + ".parts"
     os.makedirs(tmp, exist_ok=True)
-    jobs = []
-    failed = []
+    jobs, failed = [], []
     with cf.ProcessPoolExecutor(a.jobs) as ex:
-        for i in range(len(cuts) - 1):
-            part = os.path.join(tmp, f"part{i:02d}_{cuts[i]}-{cuts[i + 1]}.mp4")
+        for i in range(n_parts):
+            part = os.path.join(tmp, f"part{i:03d}_{cuts[i]}-{cuts[i + 1]}.mp4")
             if a.resume and os.path.exists(part) and count_frames(part) == cuts[i + 1] - cuts[i]:
-                print("keeping", os.path.basename(part))
                 jobs.append((part, None))
                 continue
-            jobs.append((part, ex.submit(render_range, edit_path(a), W, H, fps, cuts[i], cuts[i + 1],
-                                         part, a.crf, a.preset, a.grain)))
+            jobs.append((part, ex.submit(render_range, path, W, H, fps, cuts[i], cuts[i + 1], part, a.crf, a.preset, a.grain)))
         for part, fut in jobs:
             try:
                 if fut is not None:
@@ -1005,42 +1027,37 @@ def cmd_render(a):
             except Exception as e:      # keep the finished chunks so --resume can pick them up
                 failed.append(f"{os.path.basename(part)}: {e}")
     if failed:
-        sys.exit("render incomplete:\n  " + "\n  ".join(failed) + f"\nfinished chunks are kept in {tmp}; "
-                 "run the same command with --resume (and fewer --jobs if memory ran out)")
+        sys.exit("render incomplete:\n  " + "\n  ".join(failed) + f"\nfinished chunks are kept in {tmp}; rerun with --resume")
     lst = os.path.join(tmp, "list.txt")
     with open(lst, "w") as fh:
         for part, _ in jobs:
             fh.write(f"file '{part}'\n")
     silent = a.out + ".video.mp4"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst,
-                    "-c", "copy", silent], check=True)
-    t_from = f_from / fps
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", silent], check=True)
     dur = (f_to - f_from) / fps
-    af = f"afade=t=in:st=0:d=0.012,apad=whole_dur={dur:.4f}"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", silent, "-ss", f"{t_from:.5f}", "-i", SONG,
-                    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", af, "-c:a", "aac", "-b:a", "256k",
-                    "-ar", "48000", "-t", f"{dur:.4f}", "-movflags", "+faststart", a.out], check=True)
-    os.remove(silent)
-    for part, _ in jobs:
-        os.remove(part)
-    os.remove(lst)
-    os.rmdir(tmp)
+    if a.silent:
+        os.replace(silent, a.out)
+    else:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", silent, "-ss", f"{f_from / fps:.5f}", "-i", SONG, "-map", "0:v",
+                        "-map", "1:a", "-c:v", "copy", "-af", f"apad=whole_dur={dur:.4f}", "-c:a", "aac", "-b:a", "320k",
+                        "-ar", "48000", "-t", f"{dur:.4f}", "-movflags", "+faststart", a.out], check=True)
+        os.remove(silent)
+    if not a.keep:                 # --keep leaves the chunks, so a later --resume only renders what was deleted
+        for part, _ in jobs:
+            os.remove(part)
+        os.remove(lst)
+        os.rmdir(tmp)
     print("wrote", a.out)
 
 
-def edit_path(a):
-    return a.edit or os.path.join(HERE, "edit.py")
-
-
 def cmd_frames(a):
-    edit = load_edit(a.edit)
     W, H, fps = a.width, a.width * 9 // 16, a.fps
-    r = Renderer(edit, W, H, fps, a.grain)
+    r = Renderer(load_edit(a.edit), W, H, fps, a.grain)
     os.makedirs(a.outdir, exist_ok=True)
     for t in a.times:
         f = int(round(float(t) * fps))
 
-        def put(fi, img, t=t):
+        def put(fi, img):
             p = os.path.join(a.outdir, f"f_{fi:05d}.png")
             cv2.imwrite(p, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
             print(p)
@@ -1048,45 +1065,59 @@ def cmd_frames(a):
         r.frames(f, f + a.count, put)
 
 
-def cmd_board(a):
-    """Storyboard: three frames per shot (early / middle / late), tiled into sheets."""
+def cmd_strip(a):
+    """Consecutive frames tiled into one sheet: the way to judge a transition."""
     from PIL import Image, ImageDraw, ImageFont
-    edit = load_edit(a.edit)
+    fps = a.fps
+    r = Renderer(load_edit(a.edit), a.width, a.width * 9 // 16, fps, 0.0)
+    f0 = int(round(a.t0 * fps)) if a.t0 is not None else bf(a.beat, fps) - a.before
+    got = []
+    r.frames(f0, f0 + a.n * a.step, lambda f, img: got.append((f, img)) if (f - f0) % a.step == 0 else None)
+    tw, th = a.width, a.width * 9 // 16
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+    rows = (len(got) + a.cols - 1) // a.cols
+    sheet = Image.new("RGB", (a.cols * tw, rows * (th + 12)), (14, 14, 14))
+    d = ImageDraw.Draw(sheet)
+    for i, (f, img) in enumerate(got):
+        x, y = (i % a.cols) * tw, (i // a.cols) * (th + 12)
+        sheet.paste(Image.fromarray(img), (x, y))
+        c = r.clip_at(f)
+        d.text((x + 2, y + th), f"f{f} {f / fps:.2f}s {c.id if f == c.f0 else ''}",
+               fill=(120, 255, 120) if f == c.f0 else (255, 255, 120), font=font)
+    sheet.save(a.out, quality=88)
+    print(a.out)
+
+
+def cmd_board(a):
+    from PIL import Image, ImageDraw, ImageFont
     W, H, fps = 480, 270, a.fps
-    r = Renderer(edit, W, H, fps, grain=0.0)
+    r = Renderer(load_edit(a.edit), W, H, fps, 0.0)
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
     os.makedirs(a.outdir, exist_ok=True)
-    rows = []
     sel = set(a.only.split(",")) if a.only else None
-    for shot in r.shots:
-        if sel and shot.id not in sel:
+    rows = []
+    for c in r.clips:
+        if sel and c.id not in sel:
             continue
-        J = shot.f1 - shot.f0
-        want = sorted({min(int(0.13 * fps), J - 1), J // 2, max(J - int(0.1 * fps) - 1, 0)})
+        n = c.f1 - c.f0
+        post = int((c.tin.post if c.tin is not None else 0) * fps)
+        want = sorted({min(post + 2, n - 1), n // 2, max(n - int(0.14 * fps) - 1, 0)})
         got = {}
-
-        def put(f, img, shot=shot, got=got):
-            got[f - shot.f0] = img
-
         for j in want:
-            r.frames(shot.f0 + j, shot.f0 + j + 1, put)
-        pos = step_positions(shot, fps)
-        sfps = probe(shot.path)[2]
-        used = pos[-1] / sfps
+            r.frames(c.f0 + j, c.f0 + j + 1, lambda f, img: got.__setitem__(f - c.f0, img))
         row = Image.new("RGB", (W * 3, H + 16), (12, 12, 12))
         for i, j in enumerate(want):
             row.paste(Image.fromarray(got[j]), (i * W, 0))
-        d = ImageDraw.Draw(row)
-        d.text((4, H + 1), f"{shot.id}  beats {shot.k0:.2f}-{shot.k1:.2f}  t={shot.f0 / fps:.2f}-{shot.f1 / fps:.2f}s  "
-               f"{shot.clip[:34]}  src {shot.t_in:.1f}+{used:.1f}s  {shot.tin}", fill=(255, 255, 120), font=font)
+        ImageDraw.Draw(row).text((4, H + 1), f"{c.id}  beats {c.k0:.2f}-{c.k1:.2f}  t={c.f0 / fps:.2f}-{c.f1 / fps:.2f}s  "
+                                 f"{c.src[:40]}  {type(c.tin).__name__ if c.tin is not None else '-'}",
+                                 fill=(255, 255, 120), font=font)
         rows.append(row)
-    per = 6
-    for s in range(0, len(rows), per):
-        chunk = rows[s:s + per]
+    for s in range(0, len(rows), 6):
+        chunk = rows[s:s + 6]
         sheet = Image.new("RGB", (W * 3, (H + 16) * len(chunk)), (12, 12, 12))
         for i, row in enumerate(chunk):
             sheet.paste(row, (0, i * (H + 16)))
-        p = os.path.join(a.outdir, f"board_{s // per:02d}.jpg")
+        p = os.path.join(a.outdir, f"board_{s // 6:02d}.jpg")
         sheet.save(p, quality=88)
         print(p)
 
@@ -1099,13 +1130,14 @@ def main():
     p.add_argument("--out", required=True)
     p.add_argument("--width", type=int, default=1920)
     p.add_argument("--fps", type=int, default=60)
-    p.add_argument("--crf", type=float, default=16)
-    p.add_argument("--preset", default="medium")
-    p.add_argument("--jobs", type=int, default=4, help="chunks rendered at the same time "
-                   "(each takes about 1 GB of RAM at 1080p and 4 GB at 2160p)")
-    p.add_argument("--parts", type=int, default=0, help="number of chunks (default: --jobs)")
-    p.add_argument("--resume", action="store_true", help="keep chunks a previous run already finished")
-    p.add_argument("--grain", type=float, default=0.011)
+    p.add_argument("--crf", type=float, default=15)
+    p.add_argument("--preset", default="slow")
+    p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--parts", type=int, default=0)
+    p.add_argument("--resume", action="store_true")
+    p.add_argument("--keep", action="store_true")
+    p.add_argument("--silent", action="store_true")
+    p.add_argument("--grain", type=float, default=0.009)
     p.add_argument("--t0", type=float, default=0)
     p.add_argument("--t1", type=float, default=0)
     p.set_defaults(fn=cmd_render)
@@ -1114,9 +1146,20 @@ def main():
     p.add_argument("--count", type=int, default=1)
     p.add_argument("--width", type=int, default=1920)
     p.add_argument("--fps", type=int, default=60)
-    p.add_argument("--grain", type=float, default=0.011)
+    p.add_argument("--grain", type=float, default=0.009)
     p.add_argument("--outdir", default="frames")
     p.set_defaults(fn=cmd_frames)
+    p = sub.add_parser("strip")
+    p.add_argument("--t0", type=float, default=None)
+    p.add_argument("--beat", type=float, default=0)
+    p.add_argument("--before", type=int, default=8)
+    p.add_argument("--n", type=int, default=40)
+    p.add_argument("--step", type=int, default=1)
+    p.add_argument("--cols", type=int, default=8)
+    p.add_argument("--width", type=int, default=240)
+    p.add_argument("--fps", type=int, default=60)
+    p.add_argument("--out", default="strip.jpg")
+    p.set_defaults(fn=cmd_strip)
     p = sub.add_parser("board")
     p.add_argument("--fps", type=int, default=60)
     p.add_argument("--outdir", default="board")

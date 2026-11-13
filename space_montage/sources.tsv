@@ -1,52 +1,65 @@
-# clip file name <TAB> download URL  (ISS clips are stream-copied segments, see README)
+# file name <TAB> download URL <TAB> note   (videos go to clips/, pictures to stills_src/; see README)
 eso__black-hole-material.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/black-hole-material.mp4
-eso__cs0025c.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/cs0025c.mp4
-eso__eso1015a.hd_1080p25_screen.mp4	https://cdn.eso.org/videos/hd_1080p25_screen/eso1015a.mp4
-eso__eso1229a.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1229a.mp4
-eso__eso1509a.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1509a.mp4
 eso__eso1529a.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1529a.mp4
-eso__eso1615b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1615b.mp4
 eso__eso1615c.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1615c.mp4
-eso__eso1712a.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1712a.mp4
-eso__eso1729b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1729b.mp4
-eso__eso1733b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1733b.mp4
-eso__eso1907f.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso1907f.mp4
-eso__eso2018b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2018b.mp4
-eso__eso2106c.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2106c.mp4
-eso__eso2107c.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2107c.mp4
-eso__eso2120b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2120b.mp4
-eso__eso2214a.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2214a.mp4
-eso__eso2402b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2402b.mp4
-eso__eso2403b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2403b.mp4
 eso__eso2414b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2414b.mp4
-eso__eso2606b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2606b.mp4
-eso__eso2610b.ultra_hd.mp4	https://cdn.eso.org/videos/ultra_hd/eso2610b.mp4
 hub__heic1209g.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1209g.mp4
-hub__heic1312a.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1312a.mp4
-hub__heic1322b.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1322b.mp4
-hub__heic1501g.ultra_hd.mp4	https://cdn.esahubble.org/archives/videos/ultra_hd/heic1501g.mp4
-hub__heic1509e.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1509e.mp4
-hub__heic1608e.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1608e.mp4
-hub__heic1814b.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1814b.mp4
-hub__heic1815a.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/heic1815a.mp4
-hub__heic1914b.ultra_hd.mp4	https://cdn.esahubble.org/archives/videos/ultra_hd/heic1914b.mp4
-hub__heic2021b.ultra_hd.mp4	https://cdn.esahubble.org/archives/videos/ultra_hd/heic2021b.mp4
-hub__hubble_earth_4k_rising.ultra_hd.mp4	https://cdn.esahubble.org/archives/videos/ultra_hd/hubble_earth_4k_rising.mp4
-hub__hubblecast106d.hd_1080p25_screen.mp4	https://cdn.esahubble.org/archives/videos/hd_1080p25_screen/hubblecast106d.mp4
-nasa__bh_binary_main_4k.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a013800/a013831/BlackHoleBInary_MainSequence_4k.mp4
-nasa__bh_disk_360_4k.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a013300/a013326/BH_Accretion_Disk_Sim_360_4k.mp4
+hub__heic1916b.ultra_hd.mp4	https://cdn.esahubble.org/archives/videos/ultra_hd/heic1916b.mp4
+nasa__bh_approach_4k.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014600/a014619/1-Approaching_a_black_hole-4K.mp4
+nasa__bh_pullback_4k.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014600/a014619/3-Pulling_back_from_a_black_hole-4K.mp4
 nasa__bh_upclose_4k.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014600/a014619/4-Black_hole_up_close-4K.mp4
-nasa__earthrise.mp4	https://svs.gsfc.nasa.gov/vis/a000000/a004100/a004129/earthrise_2160p30.mp4
-nasa__iss_1150.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	# segment starting at 1150s
-nasa__iss_168.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	# segment starting at 168s
-nasa__iss_2170.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	# segment starting at 2170s
-nasa__iss_2245.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	# segment starting at 2245s
-nasa__iss_2840.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	# segment starting at 2840s
+nasa__iss_1225.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	segment of the film starting at 1225 s
+nasa__iss_168.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	segment of the film starting at 168 s
+nasa__iss_168_rev.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	segment of the film starting at 168 s (2.0-13.6 s of it, reversed)
+nasa__iss_2170.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	segment of the film starting at 2170 s
+nasa__iss_2245.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	segment of the film starting at 2245 s
+nasa__iss_2840.mp4	https://images-assets.nasa.gov/video/jsc2022m000172_Earth_in_4K_Expedition_65_Edition/jsc2022m000172_Earth_in_4K_Expedition_65_Edition~orig.mp4	segment of the film starting at 2840 s
 nasa__moontour.mp4	https://svs.gsfc.nasa.gov/vis/a000000/a004600/a004619/moontour_notitle_2160p30.mp4
-nasa__smbh_thin0.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a013000/a013086/SMBH_Sim_Thin0_4kFull.mp4
 nasa__sun_ballet.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014100/a014126/4038_Solar_Ballet_CU_mk_II.mp4
-nasa__sun_cme304_4k.mp4	https://svs.gsfc.nasa.gov/vis/a000000/a003900/a003999/AIA304AugustCME.mp4
-nasa__sun_march7.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014100/a014126/March_7_Flare_Spin.mp4
-nasa__sun_trebuchet.mp4	https://svs.gsfc.nasa.gov/vis/a010000/a014100/a014126/New_Trebuchet_mkII.mp4
 nasa__supernova_4k.mp4	https://svs.gsfc.nasa.gov/vis/a020000/a020400/a020413/SN_HQ_Full_H264_V001.mp4
 webb__weic2603c.hd_1080p25_screen.mp4	https://cdn.esawebb.org/archives/videos/hd_1080p25_screen/weic2603c.mp4
+eso__eso0907a.jpg	https://cdn.eso.org/images/large/eso0907a.jpg
+eso__eso1520a.jpg	https://cdn.eso.org/images/large/eso1520a.jpg
+eso__eso1907a.jpg	https://cdn.eso.org/images/large/eso1907a.jpg
+eso__eso9845d.jpg	https://cdn.eso.org/images/large/eso9845d.jpg
+hub__heic0503a.jpg	https://cdn.esahubble.org/archives/images/large/heic0503a.jpg
+hub__heic0506a.jpg	https://cdn.esahubble.org/archives/images/large/heic0506a.jpg
+hub__heic0715a.jpg	https://cdn.esahubble.org/archives/images/large/heic0715a.jpg
+hub__heic0910h.jpg	https://cdn.esahubble.org/archives/images/large/heic0910h.jpg
+hub__heic1007a.jpg	https://cdn.esahubble.org/archives/images/large/heic1007a.jpg
+hub__heic1310a.jpg	https://cdn.esahubble.org/archives/images/large/heic1310a.jpg
+hub__heic1520a.jpg	https://cdn.esahubble.org/archives/images/publicationjpg/heic1520a.jpg
+hub__heic1808a.jpg	https://cdn.esahubble.org/archives/images/large/heic1808a.jpg
+hub__opo0328a.jpg	https://cdn.esahubble.org/archives/images/large/opo0328a.jpg
+hub__opo0501a.jpg	https://cdn.esahubble.org/archives/images/large/opo0501a.jpg
+hub__potw1345a.jpg	https://cdn.esahubble.org/archives/images/large/potw1345a.jpg
+nasa__as08-14-2383.jpg	https://images-assets.nasa.gov/image/as08-14-2383/as08-14-2383~orig.jpg
+pad__sgra.jpg	https://cdn.eso.org/images/large/eso2208-eht-mwa.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__earth.jpg	https://images-assets.nasa.gov/image/as17-148-22727/as17-148-22727~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__jupiter.jpg	https://cdn.esahubble.org/archives/images/large/heic1914a.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__jupiterw.jpg	https://cdn.esawebb.org/archives/images/large/jupiter-auroras1.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__mars.jpg	https://images-assets.nasa.gov/image/PIA00407/PIA00407~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__moon.jpg	https://images-assets.nasa.gov/image/PIA00405/PIA00405~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__neptune.jpg	https://images-assets.nasa.gov/image/PIA01492/PIA01492~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__pluto.jpg	https://images-assets.nasa.gov/image/PIA19952/PIA19952~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__saturn.jpg	https://images-assets.nasa.gov/image/PIA06193/PIA06193~orig.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+pl__uranus.jpg	https://cdn.esawebb.org/archives/images/large/weic2602a.jpg	registered on a black 16:9 canvas with tools/prepare_stills.py
+webb__carinanebula3.jpg	https://cdn.esawebb.org/archives/images/large/carinanebula3.jpg
+webb__potm2411a.jpg	https://cdn.esawebb.org/archives/images/large/potm2411a.jpg
+webb__potm2412a.jpg	https://cdn.esawebb.org/archives/images/large/potm2412a.jpg
+webb__potm2502a.jpg	https://cdn.esawebb.org/archives/images/large/potm2502a.jpg
+webb__potm2602a.jpg	https://cdn.esawebb.org/archives/images/large/potm2602a.jpg
+webb__potm2609a.jpg	https://cdn.esawebb.org/archives/images/large/potm2609a.jpg
+webb__weic2207a.jpg	https://cdn.esawebb.org/archives/images/large/weic2207a.jpg
+webb__weic2208a.jpg	https://cdn.esawebb.org/archives/images/large/weic2208a.jpg
+webb__weic2209a.jpg	https://cdn.esawebb.org/archives/images/large/weic2209a.jpg
+webb__weic2211a.jpg	https://cdn.esawebb.org/archives/images/large/weic2211a.jpg
+webb__weic2212a.jpg	https://cdn.esawebb.org/archives/images/large/weic2212a.jpg
+webb__weic2216b.jpg	https://cdn.esawebb.org/archives/images/large/weic2216b.jpg
+webb__weic2219a.jpg	https://cdn.esawebb.org/archives/images/large/weic2219a.jpg
+webb__weic2330a.jpg	https://cdn.esawebb.org/archives/images/large/weic2330a.jpg
+webb__weic2417a.jpg	https://cdn.esawebb.org/archives/images/large/weic2417a.jpg
+webb__weic2420a.jpg	https://cdn.esawebb.org/archives/images/large/weic2420a.jpg
+webb__weic2425a.jpg	https://cdn.esawebb.org/archives/images/large/weic2425a.jpg
+webb__weic2426a.jpg	https://cdn.esawebb.org/archives/images/large/weic2426a.jpg
+webb__weic2518a.jpg	https://cdn.esawebb.org/archives/images/large/weic2518a.jpg
